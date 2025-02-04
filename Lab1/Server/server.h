@@ -1,3 +1,6 @@
+#ifndef SERVER_H
+#define SERVER_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,6 +11,7 @@
 #include <sys/time.h>
 #include <string.h>
 #include "../logger.h"
+#include "../check_connection.h"
 
 #define LOG_FILE "server_log.txt"
 
@@ -20,8 +24,10 @@
 
 void run();
 void start_server();
-void process_client(int cfd);
-void receive_data(int cfd, const char* file);
-void send_data(int cfd, const char* file);
+int process_client(int* cfd);
+void receive_data(int* cfd, const char* file);
+void send_data(int* cfd, const char* file);
 void echo();
 void server_time();
+
+#endif

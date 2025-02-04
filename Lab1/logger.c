@@ -1,13 +1,6 @@
 #include "logger.h"
 
-void log_message(const char* fileName, const char* level, const char* message) {
-
-    FILE* f = fopen(fileName, "a");
-    if (f == NULL) {
-        fclose(f);
-        perror("Error opening log file.\n");
-        exit(errno);
-    }
+void log_message(FILE* f, const char* level, const char* message) {
 
     time_t now = time(NULL);
     struct tm* timeInfo = localtime(&now);
@@ -16,11 +9,9 @@ void log_message(const char* fileName, const char* level, const char* message) {
         timeInfo->tm_mday, timeInfo->tm_mon + 1, timeInfo->tm_year + 1900,
         timeInfo->tm_hour, timeInfo->tm_min, timeInfo->tm_sec,
         level, message);
-
-    fclose(f);
 }
 
-void start_log(const char* fileName) {
+FILE* start_log(const char* fileName) {
 
     FILE* f = fopen(fileName, "w");
     if (f == NULL) {
@@ -28,5 +19,5 @@ void start_log(const char* fileName) {
         perror("Error opening log file.\n");
         exit(errno);
     }
-    fclose(f);
+    return f;
 }

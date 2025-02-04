@@ -1,3 +1,6 @@
+#ifndef CLIENT_H
+#define CLIENT_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,6 +11,7 @@
 #include <sys/time.h>
 #include <string.h>
 #include "../logger.h"
+#include "../check_connection.h"
 
 #define LOG_FILE "client_log.txt"
 
@@ -17,7 +21,9 @@
 // received data pecsantage
 // log file
 
-void run();
+void run(const char* server);
 void start_client(int* cfd, const char* serverName);
-void upload(int cfd, const char* file);
-void download(int cfd, const char* file);
+void upload(int* cfd, const char* file);
+void download(int* cfd, const char* file);
+
+#endif
