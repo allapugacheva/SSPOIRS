@@ -122,9 +122,8 @@ int upload(int* cfd, const char* command) {
     const char* file = command + 7;
 
     const char* filePath = command + 7;
-    if(is_absolute_path(filePath) != 1) {
+    if(is_absolute_path(filePath) != 1)
         filePath = get_file_path(settings->file_path, filePath);
-    } 
 
     FILE* f = fopen(filePath, "rb");
     if (f == NULL) {
