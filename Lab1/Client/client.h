@@ -14,16 +14,11 @@
 #include "../check_connection.h"
 
 #define LOG_FILE "client_log.txt"
-
-// TCP
-// command: UPLOAD, DOWNLOAD, CONNECT, DISCONNECT
-// detect connection lost, request to reconnect
-// received data pecsantage
-// log file
+#define BUFFER_SIZE 80
 
 void run(const char* server);
-void start_client(int* cfd, const char* serverName);
-void upload(int* cfd, const char* file);
-void download(int* cfd, const char* file);
+int start_client(int* cfd, const char* serverName);
+int upload(int* cfd, const char* file);
+int download(int* cfd, const char* file);
 
 #endif

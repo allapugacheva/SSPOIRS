@@ -1,7 +1,8 @@
 #include "server.h"
 
-char* lastFile = NULL;
-FILE* logger;
+FILE *logger;
+
+LOAD_INFO current, last;
 
 void run() {
 
@@ -10,10 +11,13 @@ void run() {
 
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
-    char command[10];
+    char command[BUFFER_SIZE];
 
     int sfd, cfd = -1;
-    start_server(&sfd);
+    if (!start_server(&sfd)) {
+        printf("\rError. Check log\n");
+        exit(errno);
+    }
     
     struct sockaddr_in clientAddr;
     socklen_t clientLen = sizeof(clientAddr);
@@ -30,8 +34,13 @@ void run() {
                 close(sfd);
                 close(cfd);
                 exit(errno);
-            } else if (cfd != -1)
-                log_message(logger, LOG_INFO, "Accept client connection"); // write also client addr??
+            } else if (cfd != -1) {
+                log_message(logger, LOG_INFO, "Accept client connection");
+                char clientIp[BUFFER_SIZE];
+                inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, BUFFER_SIZE);
+                init_load_info_client(&current, clientIp);
+                printf("\rAccept client connection: %s\n> ", clientIp);
+            }
         } else
             if (process_client(&cfd)) {
                 log_message(logger, LOG_INFO, "Client disconnected");
@@ -57,13 +66,13 @@ void run() {
     close(sfd);
 }
 
-void start_server(int* sfd) {
+int start_server(int* sfd) {
 
     *sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (*sfd == -1) {
         log_message(logger, LOG_CRITICAL, "Can't open socket");
         close(*sfd);
-        exit(errno);
+        return 0;
     }
     log_message(logger, LOG_INFO, "Open socket");
 
@@ -73,11 +82,7 @@ void start_server(int* sfd) {
     setsockopt(*sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     int opt = 1;
-    if(setsockopt(*sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
-        log_message(logger, LOG_CRITICAL, "Can't set socket options");
-        close (*sfd);
-        exit(errno);
-    }
+    setsockopt(*sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
     setup_keepalive(sfd);
 
@@ -89,34 +94,38 @@ void start_server(int* sfd) {
     if (bind(*sfd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
         log_message(logger, LOG_CRITICAL, "Can't bind socket");
         close(*sfd);
-        exit(errno);
+        return 0;
     }
-    log_message(logger, LOG_INFO, "Bing server");
+    log_message(logger, LOG_INFO, "Bind server");
 
     if (listen(*sfd, 5) == -1) {
         log_message(logger, LOG_CRITICAL, "Can't start listen");
         close(*sfd);
-        exit(errno);
+        return 0;
     }
     log_message(logger, LOG_INFO, "Server start to listen");
 
     fcntl(*sfd, F_SETFL, O_NONBLOCK);
+    return 1;
 }
 
 int process_client(int* cfd) {
 
-    char* buffer = (char*)malloc(80 * sizeof(char));
-    if (read_with_check(cfd, &buffer, 80, logger, NULL, 0) == -2) {
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
+    if (read_with_check(cfd, &buffer, BUFFER_SIZE, logger, NULL, 0) == -2) {
         free(buffer);
         return 0;
     }
     if (strstr(buffer, "UPLOAD") != NULL) {
+        printf("\rClient start uploading file\n> ");
         char* file = buffer + 7;
         receive_data(cfd, file);
     } else if (strstr(buffer, "DOWNLOAD") != NULL) {
+        printf("\rClient start downloading file\n> ");
         char* file = buffer + 9;
         send_data(cfd, file);
     } else if (strstr(buffer, "QUIT") != NULL) {
+        printf("\rClient disconnected\n> ");
         free(buffer);
         return 1;
     }
@@ -128,78 +137,97 @@ void receive_data(int* cfd, const char* file) {
 
     log_message(logger, LOG_INFO, "Start receive client data");
 
-    char* buffer = (char*)malloc(80 * sizeof(char));
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     int fileSize = -1, received = 0;
 
-    FILE* f = fopen(file, "wb");
+    init_load_info_file(&current, file, NULL, 1);
+    int same = same_clients_files(&current, &last);
+    FILE* f = fopen(file, same ? "ab" : "wb");
     if (f == NULL) {
+        printf("\rCan't create file to receive data from client\n> ");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from client");
-        write_with_check_int(cfd, &fileSize, logger, f, 0);
+        write_with_check_int(cfd, &fileSize, logger, NULL, 0);
         return;
     }
 
-    if(read_with_check_int(cfd, &fileSize, logger, f, 0) == -2) // ###
+    if (read_with_check_int(cfd, &current.fileSize, logger, f, 0) == -2)
+        return;
+
+    if (same)
+        copy_file(&current, &last, f);
+    if (write_with_check_int(cfd, &current.processed, logger, f, 0) == -2)
         return;
 
     int rec;
-    while (received < fileSize && (rec = read_with_check(cfd, &buffer, 80, logger, f, 0))) { // ###
+    while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f, 0))) {
         if(rec == -2)
             return;
         fwrite(buffer, sizeof(char), rec, f);
-        received += rec;
+        current.processed += rec;
     }
         // print percantage and amount of bytes
 
+    printf("\rReceive file from client\n> ");
     log_message(logger, LOG_INFO, "Client's data successfully received");
     fclose(f);
     free(buffer);
+    copy_info(&last, &current);
 }
 
 void send_data(int* cfd, const char* file) {
 
     log_message(logger, LOG_INFO, "Start send data to client");
-    // process lost connection
 
-    char* buffer = (char*)malloc(80 * sizeof(char));
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     int fileSize = -1, sent = 0, bytesRead;
 
     FILE* f = fopen(file, "rb");
     if (f == NULL) {
+        printf("\rCan't open file to send data to client\n> ");
         log_message(logger, LOG_ERROR, "Can't open file to send data to client");
-        write_with_check_int(cfd, &fileSize, logger, f, 0); // ###
+        write_with_check_int(cfd, &fileSize, logger, NULL, 0);
+        free(buffer);
         return;
     }
 
     int ret;
-    if ((ret = read_with_check_int(cfd, &fileSize, logger, f, 0)) == -2)
+    if ((ret = read_with_check_int(cfd, &current.fileSize, logger, f, 0)) == -2)
         return;
-    if (fileSize == -1 && ret != -1) { // ###
+    if (current.fileSize == -1 && ret != -1) {
+        printf("\rCan't open file on client\n> ");
         log_message(logger, LOG_ERROR, "Can't open file on client");
         fclose(f);
+        free(buffer);
         return;
     }
 
-    fseek(f, 0, SEEK_END);
-    fileSize = ftell(f);
-    rewind(f);
-    if (write_with_check_int(cfd, &fileSize, logger, f, 0) == -2) // ###
+    init_load_info_file(&current, file, f, 0);
+    if (same_clients_files(&current, &last))
+        copy_file(&current, &last, f);
+
+    if (write_with_check_int(cfd, &current.fileSize, logger, f, 0) == -2)
+        return;
+    if (write_with_check_int(cfd, &current.processed, logger, f, 0) == -2)
         return;
         
     int read;
-    while (sent < fileSize && (read = fread(buffer, 1, 80, f))) {
-        if (write_with_check(cfd, buffer, read, logger, f, 0) == -2) // ###
+    while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
+        if (write_with_check(cfd, buffer, read, logger, f, 0) == -2)
             return;
-        sent += read;
+        current.processed += read;
         // display persantage and amount of sent bytes
     }
+
+    printf("\rSent data to client\n> ");
     log_message(logger, LOG_INFO, "Data successfully sent to client");
     fclose(f);
     free(buffer);
+    copy_info(&last, &current);
 }
 
 void echo() {
-    if (lastFile != NULL)
-        printf("Last processed file: %s\n", lastFile);
+    if (last.fileName[0] != '\0')
+        printf("Last operation: %s. File: %s\n", !last.download ? "send to client" : "receive from client", last.fileName);
     else
         printf("No file processed before\n");
     log_message(logger, LOG_INFO, "Process command ECHO");
