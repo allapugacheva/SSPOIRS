@@ -12,6 +12,7 @@
 #include <string.h>
 #include "../logger.h"
 #include "../check_connection.h"
+#include "../settings.h"
 
 #define LOG_FILE "client_log.txt"
 #define BUFFER_SIZE 80
@@ -20,5 +21,5 @@ void run(const char* server);
 int start_client(int* cfd, const char* serverName);
 int upload(int* cfd, const char* file);
 int download(int* cfd, const char* file);
-
+void settings_command(char* command);
 #endif

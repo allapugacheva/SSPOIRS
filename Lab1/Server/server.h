@@ -13,9 +13,12 @@
 #include "../logger.h"
 #include "../check_connection.h"
 #include "load_info.h"
+#include "../settings.h"
 
 #define LOG_FILE "server_log.txt"
 #define BUFFER_SIZE 80
+
+extern SETTINGS* settings;
 
 void run();
 int start_server();
@@ -24,5 +27,6 @@ void receive_data(int* cfd, const char* file);
 void send_data(int* cfd, const char* file);
 void echo();
 void server_time();
+void settings_command(char* command);
 
 #endif

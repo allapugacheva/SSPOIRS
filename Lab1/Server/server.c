@@ -1,13 +1,15 @@
 #include "server.h"
 
 FILE *logger;
-
+SETTINGS* settings;
 LOAD_INFO current, last;
 
 void run() {
 
     logger = start_log(LOG_FILE);
     log_message(logger, LOG_INFO, "Start server work");
+
+    settings = init_settings();
 
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
@@ -54,9 +56,11 @@ void run() {
                 echo();
             else if (strcmp(command, "TIME") == 0)
                 server_time();
+            else if(strstr(command, "SETTINGS") != 0) 
+                settings_command(command); 
             else if (strcmp(command, "QUIT") == 0)
                 break;
-            printf("> ");
+             printf("> ");
         }
     }
 
@@ -142,7 +146,9 @@ void receive_data(int* cfd, const char* file) {
 
     init_load_info_file(&current, file, NULL, 1);
     int same = same_clients_files(&current, &last);
-    FILE* f = fopen(file, same ? "ab" : "wb");
+    char* fileName = get_filename(file);
+    char* serverFilePath = get_file_path(settings->file_path, fileName);
+    FILE* f = fopen(serverFilePath, same ? "ab" : "wb");
     if (f == NULL) {
         printf("\rCan't create file to receive data from client\n> ");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from client");
@@ -170,6 +176,8 @@ void receive_data(int* cfd, const char* file) {
     printf("\rReceive file from client\n> ");
     log_message(logger, LOG_INFO, "Client's data successfully received");
     fclose(f);
+    free(serverFilePath);
+    free(fileName);
     free(buffer);
     copy_info(&last, &current);
 }
@@ -181,7 +189,12 @@ void send_data(int* cfd, const char* file) {
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     int fileSize = -1, sent = 0, bytesRead;
 
-    FILE* f = fopen(file, "rb");
+    char* serverFilePath = file;
+    if(is_absolute_path(file) != 1) {
+        serverFilePath = get_file_path(settings->file_path, file);
+    }
+
+    FILE* f = fopen(serverFilePath, "rb");
     if (f == NULL) {
         printf("\rCan't open file to send data to client\n> ");
         log_message(logger, LOG_ERROR, "Can't open file to send data to client");
@@ -241,4 +254,32 @@ void server_time() {
         timeInfo->tm_mday, timeInfo->tm_mon + 1, timeInfo->tm_year + 1900,
         timeInfo->tm_hour, timeInfo->tm_min, timeInfo->tm_sec);
     log_message(logger, LOG_INFO, "Process command TIME");
+}
+
+//__________________ SETTINGS _________________________
+
+void settings_command(char* command) {
+    if(strstr(command, ".path") != 0) {
+        char* start_i = strchr(command, ' ');
+        if(start_i == NULL) 
+            return;
+
+        int last_i = strlen(command) - 1;
+
+        while(*(++start_i) == ' ');
+ 
+        char dir[MAX_PATH_SIZE];
+        if(*start_i == '"' && command[last_i] == '"') {
+            start_i++; last_i--; 
+            strncpy(dir, start_i, strlen(start_i));
+            dir[strlen(start_i) - 1] = '\0';
+        } else { 
+            strcpy(dir, start_i);
+        }
+        
+        settings_cmd(settings, SET_PATH, dir);
+
+    } else if(strcmp(command, "SETTINGS") == 0) { 
+        settings_cmd(settings, SETTINGS_LIST, NULL);
+    }
 }

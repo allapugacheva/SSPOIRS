@@ -1,6 +1,7 @@
 #include "client.h"
 
 FILE* logger;
+SETTINGS* settings;
 
 void run(const char* server) {
     
@@ -10,6 +11,7 @@ void run(const char* server) {
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
+    settings = init_settings();
     int cfd;
     char command[BUFFER_SIZE];
 
@@ -37,6 +39,8 @@ void run(const char* server) {
                     if (download(&cfd, command) == 0)
                         break;
                 }
+                else if(strstr(command, "SETTINGS") != NULL)
+                    settings_command(command); 
                 else if (strcmp(command, "QUIT") == 0) {
                     write_with_check(&cfd, "QUIT", sizeof("QUIT"), logger, NULL, 1);
                     work = 0;
@@ -44,22 +48,22 @@ void run(const char* server) {
                 }
                 printf("> ");
             }
+
+            if (work) {
+                printf("\rDo you want to reconnect to server? [y/n]: ");
+                unsigned char ch;
+                while((ch = getchar()) != 'y' && ch != 'n');
+                fflush(stdin);
+                if(ch != 'y')
+                    break;
+            }
         }
 
-        if (work) {
-            printf("\rDo you want to reconnect to server? [y/n]: ");
-            unsigned char ch;
-            while((ch = getchar()) != 'y' && ch != 'n');
-            fflush(stdin);
-            if(ch != 'y')
-                break;
-        }
+        log_message(logger, LOG_INFO, "Stop client work");
+        fcntl(STDIN_FILENO, F_SETFL, flags);
+        fclose(logger);
+        close(cfd);
     }
-
-    log_message(logger, LOG_INFO, "Stop client work");
-    fcntl(STDIN_FILENO, F_SETFL, flags);
-    fclose(logger);
-    close(cfd);
 }
 
 int start_client(int* cfd, const char* serverName) {
@@ -118,7 +122,12 @@ int upload(int* cfd, const char* command) {
     int fileSize = -1, sent = 0, bytesRead, ret;
     const char* file = command + 7;
 
-    FILE* f = fopen(file, "rb");
+    const char* filePath = command + 7;
+    if(is_absolute_path(filePath) != 1) {
+        filePath = get_file_path(settings->file_path, filePath);
+    } 
+
+    FILE* f = fopen(filePath, "rb");
     if (f == NULL) {
         printf("\rCan't open file to send data to server\n");
         log_message(logger, LOG_ERROR, "Can't open file to send data to server");
@@ -181,7 +190,9 @@ int download(int* cfd, const char* command) {
     if (ret == -2)
         return 0;
 
-    FILE* f = fopen(file, "wb");
+    char* fileName = get_filename(file);
+    char* filePath = get_file_path(settings->file_path, fileName);
+    FILE* f = fopen(filePath, "wb");
     if (f == NULL) {
         printf("\rCan't create file to receive data from server\n");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from server");
@@ -207,6 +218,34 @@ int download(int* cfd, const char* command) {
     printf("\rSuccessfully receive data from server\n");
     log_message(logger, LOG_INFO, "Server's data successfully received");
     fclose(f);
+    free(fileName);
+    free(filePath);
     free(buffer);
     return 1;
+}
+
+void settings_command(char* command) {
+    if(strstr(command, ".path") != 0) {
+        char* start_i = strchr(command, ' ');
+        if(start_i == NULL) 
+            return;
+
+        int last_i = strlen(command) - 1;
+
+        while(*(++start_i) == ' ');
+ 
+        char dir[MAX_PATH_SIZE];
+        if(*start_i == '"' && command[last_i] == '"') {
+            start_i++; last_i--; 
+            strncpy(dir, start_i, strlen(start_i));
+            dir[strlen(start_i) - 1] = '\0';
+        } else { 
+            strcpy(dir, start_i);
+        }
+        
+        settings_cmd(settings, SET_PATH, dir);
+
+    } else if(strcmp(command, "SETTINGS") == 0) { 
+        settings_cmd(settings, SETTINGS_LIST, NULL);
+    }
 }
