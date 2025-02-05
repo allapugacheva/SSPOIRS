@@ -48,22 +48,21 @@ void run(const char* server) {
                 }
                 printf("> ");
             }
-
-            if (work) {
-                printf("\rDo you want to reconnect to server? [y/n]: ");
-                unsigned char ch;
-                while((ch = getchar()) != 'y' && ch != 'n');
-                fflush(stdin);
-                if(ch != 'y')
-                    break;
-            }
         }
 
-        log_message(logger, LOG_INFO, "Stop client work");
-        fcntl(STDIN_FILENO, F_SETFL, flags);
-        fclose(logger);
-        close(cfd);
+        if (work) {
+            printf("\rDo you want to reconnect to server? [y/n]: ");
+            unsigned char ch;
+            while((ch = getchar()) != 'y' && ch != 'n');
+            fflush(stdin);
+            if(ch != 'y')
+                break;
+        }
     }
+    log_message(logger, LOG_INFO, "Stop client work");
+    fcntl(STDIN_FILENO, F_SETFL, flags);
+    fclose(logger);
+    close(cfd);
 }
 
 int start_client(int* cfd, const char* serverName) {
