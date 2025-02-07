@@ -13,10 +13,10 @@
 #include "logger.h"
 
 void setup_keepalive(int* sockfd);
-int check_connection(int* sockfd, FILE* logger, int client);
-int write_with_check(int* sockfd, const char* buffer, int len, FILE* logger, FILE* f, int client);
-int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f, int client);
-int write_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f, int client);
-int read_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f, int client);
+int check_connection(int* sockfd, FILE* logger);
+int write_with_check(int* sockfd, const char* buffer, int len, FILE* logger, FILE* f);
+int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f);
+int write_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f);
+int read_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f);
 
 #endif

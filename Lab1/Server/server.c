@@ -116,7 +116,7 @@ int start_server(int* sfd) {
 int process_client(int* cfd) {
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    if (read_with_check(cfd, &buffer, BUFFER_SIZE, logger, NULL, 0) == -2) {
+    if (read_with_check(cfd, &buffer, BUFFER_SIZE, logger, NULL) == -2) {
         free(buffer);
         return 0;
     }
@@ -152,20 +152,20 @@ void receive_data(int* cfd, const char* file) {
     if (f == NULL) {
         printf("\rCan't create file to receive data from client\n> ");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from client");
-        write_with_check_int(cfd, &fileSize, logger, NULL, 0);
+        write_with_check_int(cfd, &fileSize, logger, NULL);
         return;
     }
 
-    if (read_with_check_int(cfd, &current.fileSize, logger, f, 0) == -2)
+    if (read_with_check_int(cfd, &current.fileSize, logger, f) == -2)
         return;
 
     if (same)
         copy_file(&current, &last, f);
-    if (write_with_check_int(cfd, &current.processed, logger, f, 0) == -2)
+    if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
 
     int rec;
-    while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f, 0))) {
+    while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
         if(rec == -2)
             return;
         fwrite(buffer, sizeof(char), rec, f);
@@ -198,13 +198,13 @@ void send_data(int* cfd, const char* file) {
     if (f == NULL) {
         printf("\rCan't open file to send data to client\n> ");
         log_message(logger, LOG_ERROR, "Can't open file to send data to client");
-        write_with_check_int(cfd, &fileSize, logger, NULL, 0);
+        write_with_check_int(cfd, &fileSize, logger, NULL);
         free(buffer);
         return;
     }
 
     int ret;
-    if ((ret = read_with_check_int(cfd, &current.fileSize, logger, f, 0)) == -2)
+    if ((ret = read_with_check_int(cfd, &current.fileSize, logger, f)) == -2)
         return;
     if (current.fileSize == -1 && ret != -1) {
         printf("\rCan't open file on client\n> ");
@@ -218,14 +218,14 @@ void send_data(int* cfd, const char* file) {
     if (same_clients_files(&current, &last))
         copy_file(&current, &last, f);
 
-    if (write_with_check_int(cfd, &current.fileSize, logger, f, 0) == -2)
+    if (write_with_check_int(cfd, &current.fileSize, logger, f) == -2)
         return;
-    if (write_with_check_int(cfd, &current.processed, logger, f, 0) == -2)
+    if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
         
     int read;
     while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
-        if (write_with_check(cfd, buffer, read, logger, f, 0) == -2)
+        if (write_with_check(cfd, buffer, read, logger, f) == -2)
             return;
         current.processed += read;
         // display persantage and amount of sent bytes

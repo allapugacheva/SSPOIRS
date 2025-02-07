@@ -9,16 +9,16 @@ void setup_keepalive(int* sockfd) {
         exit(errno);
     }
 
-    int idle = 10;     // Начало проверки через 60 секунд
-    int interval = 2;  // Повторные проверки каждые 10 секунд
-    int maxpkt = 3;    // Количество попыток перед разрывом соединения
+    int idle = 10;     
+    int interval = 2;  
+    int maxpkt = 3;   
 
     setsockopt(*sockfd, IPPROTO_TCP, TCP_KEEPIDLE, &idle, sizeof(idle));
     setsockopt(*sockfd, IPPROTO_TCP, TCP_KEEPINTVL, &interval, sizeof(interval));
     setsockopt(*sockfd, IPPROTO_TCP, TCP_KEEPCNT, &maxpkt, sizeof(maxpkt));
 }
 
-int check_connection(int* sockfd, FILE* logger, int client) {
+int check_connection(int* sockfd, FILE* logger) {
 
     int ret = send(*sockfd, NULL, 0, MSG_NOSIGNAL);
     if (ret == -1) {
@@ -32,7 +32,7 @@ int check_connection(int* sockfd, FILE* logger, int client) {
     return 1;
 }
 
-int write_with_check(int* sockfd, const char* buffer, int len, FILE* logger, FILE* f, int client) {
+int write_with_check(int* sockfd, const char* buffer, int len, FILE* logger, FILE* f) {
 
     int ret = write(*sockfd, buffer, len);
     if (ret == -1 && (errno == ECONNRESET || errno == EPIPE)) {
@@ -46,7 +46,7 @@ int write_with_check(int* sockfd, const char* buffer, int len, FILE* logger, FIL
     return ret;
 }
 
-int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f, int client) {
+int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f) {
 
     int ret = read(*sockfd, *buffer, len);
     if (ret == 0 || (ret == -1 && errno == ECONNRESET)) {
@@ -60,7 +60,7 @@ int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f, 
     return ret;
 }
 
-int write_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f, int client) {
+int write_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f) {
 
     int ret = write(*sockfd, buffer, sizeof(int));
     if (ret == -1 && (errno == ECONNRESET || errno == EPIPE)) {
@@ -74,7 +74,7 @@ int write_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f, int cl
     return ret;
 }
 
-int read_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f, int client) {
+int read_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f) {
 
     int ret = read(*sockfd, buffer, sizeof(int));
     if (ret == 0 || (ret == -1 && errno == ECONNRESET)) {

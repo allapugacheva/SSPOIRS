@@ -42,7 +42,7 @@ void run(const char* server) {
                 else if(strstr(command, "SETTINGS") != NULL)
                     settings_command(command); 
                 else if (strcmp(command, "QUIT") == 0) {
-                    write_with_check(&cfd, "QUIT", sizeof("QUIT"), logger, NULL, 1);
+                    write_with_check(&cfd, "QUIT", sizeof("QUIT"), logger, NULL);
                     work = 0;
                     break;
                 }
@@ -119,7 +119,6 @@ int upload(int* cfd, const char* command) {
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     int fileSize = -1, sent = 0, bytesRead, ret;
-    const char* file = command + 7;
 
     const char* filePath = command + 7;
     if(is_absolute_path(filePath) != 1)
@@ -132,9 +131,9 @@ int upload(int* cfd, const char* command) {
         return -1;
     }
 
-    if (write_with_check(cfd, command, strlen(command) + 1, logger, f, 1) == -2)
+    if (write_with_check(cfd, command, strlen(command) + 1, logger, f) == -2)
         return 0;
-    if ((ret = read_with_check_int(cfd, &fileSize, logger, f, 1)) >= 0 && fileSize == -1) {
+    if ((ret = read_with_check_int(cfd, &fileSize, logger, f)) >= 0 && fileSize == -1) {
         printf("\rCan't create file on server\n");
         log_message(logger, LOG_ERROR, "Error while create file on server");
         fclose(f);
@@ -146,17 +145,17 @@ int upload(int* cfd, const char* command) {
     fseek(f, 0, SEEK_END);
     fileSize = ftell(f);
     rewind(f);
-    if (write_with_check_int(cfd, &fileSize, logger, f, 1) == -2)
+    if (write_with_check_int(cfd, &fileSize, logger, f) == -2)
         return 0;
     
-    if (read_with_check_int(cfd, &sent, logger, f, 1) == -2)
+    if (read_with_check_int(cfd, &sent, logger, f) == -2)
         return 0;
     if (sent != 0)
         fseek(f, sent, SEEK_SET);
 
     int read;
     while (sent < fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
-        if (write_with_check(cfd, buffer, read, logger, f, 1) == -2)
+        if (write_with_check(cfd, buffer, read, logger, f) == -2)
             return 0;
         sent += read;
         // display persantage and amount of sent bytes
@@ -177,10 +176,10 @@ int download(int* cfd, const char* command) {
     int fileSize = -1, received = 0;
     const char* file = command + 9;
 
-    if (write_with_check(cfd, command, strlen(command) + 1, logger, NULL, 1) == -2)
+    if (write_with_check(cfd, command, strlen(command) + 1, logger, NULL) == -2)
         return 0;
     int ret;
-    if ((ret = read_with_check_int(cfd, &fileSize, logger, NULL, 1)) >= 0 && fileSize == -1) {
+    if ((ret = read_with_check_int(cfd, &fileSize, logger, NULL)) >= 0 && fileSize == -1) {
         printf("\rNo such file on server\n");
         log_message(logger, LOG_ERROR, "No such file on server");
         return -1;
@@ -194,19 +193,19 @@ int download(int* cfd, const char* command) {
     if (f == NULL) {
         printf("\rCan't create file to receive data from server\n");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from server");
-        write_with_check_int(cfd, &fileSize, logger, NULL, 1);
+        write_with_check_int(cfd, &fileSize, logger, NULL);
         return -1;
     }
 
-    if (read_with_check_int(cfd, &fileSize, logger, f, 1) == -2)
+    if (read_with_check_int(cfd, &fileSize, logger, f) == -2)
         return 0;
-    if (read_with_check_int(cfd, &received, logger, f, 1) == -2)
+    if (read_with_check_int(cfd, &received, logger, f) == -2)
         return 0;
     if (received != 0)
         fseek(f, received, SEEK_SET);
 
     int rec;
-    while (received < fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f, 1))) {
+    while (received < fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
         if (rec == -2)
             return 0;
         fwrite(buffer, sizeof(char), rec, f);
