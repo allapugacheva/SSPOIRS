@@ -15,13 +15,15 @@
 #include "load_info.h"
 #include "../settings.h"
 
+#include "../bnl/loading_line.h"
+
 #define LOG_FILE "server_log.txt"
 #define BUFFER_SIZE 80
 
 extern SETTINGS* settings;
 
 void run();
-int start_server();
+int start_server(int* sfd);
 int process_client(int* cfd);
 void receive_data(int* cfd, const char* file);
 void send_data(int* cfd, const char* file);

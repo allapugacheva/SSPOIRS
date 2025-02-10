@@ -27,7 +27,7 @@ void run() {
     printf("> ");
     while (1) {
         
-        check_connection(&cfd, logger, 0);
+        check_connection(&cfd, logger);
 
         if (cfd == -1) {
             cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen);
@@ -142,7 +142,7 @@ void receive_data(int* cfd, const char* file) {
     log_message(logger, LOG_INFO, "Start receive client data");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    int fileSize = -1, received = 0;
+    int fileSize = -1;
 
     init_load_info_file(&current, file, NULL, 1);
     int same = same_clients_files(&current, &last);
@@ -165,13 +165,27 @@ void receive_data(int* cfd, const char* file) {
         return;
 
     int rec;
+    double newPercent = ((double)current.processed / fileSize) * 100.0;
+    struct timeval start, end;
+    
+    LLINE* lline = init_lline(newPercent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
+    setvbuf(stdout, NULL, _IONBF, 0);
     while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
         if(rec == -2)
             return;
         fwrite(buffer, sizeof(char), rec, f);
         current.processed += rec;
+
+        newPercent = ((double)current.processed / fileSize) * 100.0;
+        gettimeofday(&end, NULL);
+        if( refresh_lline(lline, newPercent, (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6) == 1)
+            gettimeofday(&start, NULL);
     }
-        // print percantage and amount of bytes
+
+    while (recv(*cfd, buffer, sizeof(buffer), MSG_DONTWAIT) > 0);
 
     printf("\rReceive file from client\n> ");
     log_message(logger, LOG_INFO, "Client's data successfully received");
@@ -187,7 +201,7 @@ void send_data(int* cfd, const char* file) {
     log_message(logger, LOG_INFO, "Start send data to client");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    int fileSize = -1, sent = 0, bytesRead;
+    int fileSize = -1, bytesRead;
 
     char* serverFilePath = file;
     if(is_absolute_path(file) != 1) {
@@ -224,11 +238,23 @@ void send_data(int* cfd, const char* file) {
         return;
         
     int read;
+    double newPercent = ((double)current.processed / fileSize) * 100.0;
+    struct timeval start, end;
+
+    LLINE* lline = init_lline(newPercent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
     while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
         if (write_with_check(cfd, buffer, read, logger, f) == -2)
             return;
         current.processed += read;
-        // display persantage and amount of sent bytes
+
+        printf("asdf\n");
+        newPercent = ((double)current.processed / fileSize) * 100.0;
+        gettimeofday(&end, NULL);
+        if( refresh_lline(lline, newPercent, (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6) == 1)
+            gettimeofday(&start, NULL);
     }
 
     printf("\rSent data to client\n> ");

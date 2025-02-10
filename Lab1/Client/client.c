@@ -25,7 +25,7 @@ void run(const char* server) {
         printf("> ");
         while (1) {
 
-            if(!check_connection(&cfd, logger, 1))
+            if(!check_connection(&cfd, logger))
                 break;
 
             if(fgets(command, sizeof(command), stdin)) {
@@ -154,12 +154,25 @@ int upload(int* cfd, const char* command) {
         fseek(f, sent, SEEK_SET);
 
     int read;
+    double newPercent = ((double)sent / fileSize) * 100.0;
+    struct timeval start, end;
+
+    LLINE* lline = init_lline(newPercent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
     while (sent < fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
         if (write_with_check(cfd, buffer, read, logger, f) == -2)
             return 0;
         sent += read;
-        // display persantage and amount of sent bytes
+            
+        newPercent = ((double)sent / fileSize) * 100.0;
+        gettimeofday(&end, NULL);
+        if( refresh_lline(lline, newPercent, (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6) == 1)
+            gettimeofday(&start, NULL);
+
     }
+    free_lline(lline);
 
     printf("\rFile successfully sent to server\n");
     log_message(logger, LOG_INFO, "Data successfully sent to server");
@@ -205,12 +218,27 @@ int download(int* cfd, const char* command) {
         fseek(f, received, SEEK_SET);
 
     int rec;
+
+    double newPercent = ((double)received / fileSize) * 100.0;
+    struct timeval start, end;
+    
+    LLINE* lline = init_lline(newPercent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
     while (received < fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
         if (rec == -2)
             return 0;
         fwrite(buffer, sizeof(char), rec, f);
         received += rec;
+
+        newPercent = ((double)received / fileSize) * 100.0;
+        gettimeofday(&end, NULL);
+        if( refresh_lline(lline, newPercent, (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) / 1e6) == 1)
+            gettimeofday(&start, NULL);
     }
+
+    free_lline(lline);
 
     printf("\rSuccessfully receive data from server\n");
     log_message(logger, LOG_INFO, "Server's data successfully received");

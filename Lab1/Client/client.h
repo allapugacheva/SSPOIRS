@@ -14,6 +14,8 @@
 #include "../check_connection.h"
 #include "../settings.h"
 
+#include "../bnl/loading_line.h"
+
 #define LOG_FILE "client_log.txt"
 #define BUFFER_SIZE 80
 
