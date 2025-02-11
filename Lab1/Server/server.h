@@ -15,6 +15,8 @@
 #include "load_info.h"
 #include "../settings.h"
 
+#include "../bnl/loading_line.h"
+
 #define LOG_FILE "server_log.txt"
 #define BUFFER_SIZE 80
 
