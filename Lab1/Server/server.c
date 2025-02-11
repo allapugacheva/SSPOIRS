@@ -21,6 +21,8 @@ void run() {
         exit(errno);
     }
     
+    vl_server_start();
+
     struct sockaddr_in clientAddr;
     socklen_t clientLen = sizeof(clientAddr);
 
@@ -179,6 +181,7 @@ void receive_data(int* cfd, const char* file) {
         copy_file(&current, &last, f);
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
+    vl_input_message();
 
     int rec; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
     struct timeval start, end; double recTime = 0.0, packTime = 0.0;
@@ -211,6 +214,7 @@ void receive_data(int* cfd, const char* file) {
     free(buffer);
     free(speedString);
     copy_info(&last, &current);
+    vl_task_success();
 }
 
 void send_data(int* cfd, const char* file) {
@@ -254,8 +258,7 @@ void send_data(int* cfd, const char* file) {
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
 
-    int read;
-    int rec; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
+    int read; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
     struct timeval start, end; double recTime = 0.0, packTime = 0.0;
     LLINE* lline = init_lline(new_percent, current.fileSize);
     show_lline(lline);

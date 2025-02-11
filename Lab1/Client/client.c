@@ -22,6 +22,7 @@ void run(const char* server) {
             printf("\rError. Check log\n");
             exit(errno);
         }
+        
         printf("> ");
         while (1) {
 
