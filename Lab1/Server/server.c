@@ -27,7 +27,7 @@ void run() {
     printf("> ");
     while (1) {
         
-        check_connection(&cfd, logger, 0);
+        check_connection(&cfd, logger);
 
         if (cfd == -1) {
             cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen);
@@ -51,16 +51,20 @@ void run() {
             }
 
         if (fgets(command, sizeof(command), stdin))  {
+            //printf("FUCK1\n");
             command[strlen(command) - 1] = '\0';
             if (strcmp(command, "ECHO") == 0)
                 echo();
-            else if (strcmp(command, "TIME") == 0)
+            else if (strcmp(command, "TIME") == 0) {
                 server_time();
+                //printf("FUCK2\n");
+            }
             else if(strstr(command, "SETTINGS") != 0) 
                 settings_command(command); 
             else if (strcmp(command, "QUIT") == 0)
                 break;
-             printf("> ");
+            //printf("FUCK3\n");
+            printf("> ");
         }
     }
 
@@ -81,7 +85,7 @@ int start_server(int* sfd) {
     log_message(logger, LOG_INFO, "Open socket");
 
     struct timeval timeout;
-    timeout.tv_sec = 5;
+    timeout.tv_sec = 3;
     timeout.tv_usec = 0;
     setsockopt(*sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
@@ -115,11 +119,25 @@ int start_server(int* sfd) {
 
 int process_client(int* cfd) {
 
+    fd_set readfds;
+    struct timeval timeout;
+    timeout.tv_sec = 0; 
+    timeout.tv_usec = 0; 
+
+    FD_ZERO(&readfds);
+    FD_SET(*cfd, &readfds);
+
+    int ready = select(*cfd + 1, &readfds, NULL, NULL, &timeout);
+
+    if (!(ready > 0 && FD_ISSET(*cfd, &readfds)))
+        return 0;
+
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     if (read_with_check(cfd, &buffer, BUFFER_SIZE, logger, NULL) == -2) {
         free(buffer);
         return 0;
     }
+
     if (strstr(buffer, "UPLOAD") != NULL) {
         printf("\rClient start uploading file\n> ");
         char* file = buffer + 7;
@@ -189,7 +207,7 @@ void send_data(int* cfd, const char* file) {
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     int fileSize = -1, sent = 0, bytesRead;
 
-    char* serverFilePath = file;
+    char* serverFilePath = (char*)file;
     if(is_absolute_path(file) != 1) {
         serverFilePath = get_file_path(settings->file_path, file);
     }

@@ -25,7 +25,7 @@ void run(const char* server) {
         printf("> ");
         while (1) {
 
-            if(!check_connection(&cfd, logger, 1))
+            if(!check_connection(&cfd, logger))
                 break;
 
             if(fgets(command, sizeof(command), stdin)) {
@@ -51,7 +51,7 @@ void run(const char* server) {
         }
 
         if (work) {
-            printf("\rDo you want to reconnect to server? [y/n]: ");
+            printf("\rLose connection to server. Do you want to reconnect? [y/n]: ");
             unsigned char ch;
             while((ch = getchar()) != 'y' && ch != 'n');
             fflush(stdin);
@@ -76,7 +76,7 @@ int start_client(int* cfd, const char* serverName) {
     log_message(logger, LOG_INFO, "Open client socket");
 
     struct timeval timeout;
-    timeout.tv_sec = 3;
+    timeout.tv_sec = 2;
     timeout.tv_usec = 0;
     setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 

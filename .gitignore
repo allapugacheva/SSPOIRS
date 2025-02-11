@@ -3,3 +3,4 @@ Lab1/.vscode
 Lab1/Client/client
 Lab1/Server/server
 *.txt
+*.out
