@@ -11,8 +11,8 @@
 typedef struct {
     char client[INET_ADDRSTRLEN];
     char fileName[BUFFER_SIZE];
-    int fileSize;
-    int processed;
+    long double fileSize;
+    long double processed;
     int download;
 } LOAD_INFO;
 

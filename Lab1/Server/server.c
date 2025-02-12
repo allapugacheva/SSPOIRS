@@ -159,7 +159,7 @@ void receive_data(int* cfd, const char* file) {
     log_message(logger, LOG_INFO, "Start receive client data");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    int fileSize = -1, received = 0;
+    long double fileSize = -1, received = 0;
 
     init_load_info_file(&current, file, NULL, 1);
     int same = same_clients_files(&current, &last);
@@ -175,8 +175,10 @@ void receive_data(int* cfd, const char* file) {
 
     if (read_with_check_int(cfd, &current.fileSize, logger, f) == -2)
         return;
-    if (same)
+
+    if (same) {
         copy_file(&current, &last, f);
+    }
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
 
@@ -187,8 +189,10 @@ void receive_data(int* cfd, const char* file) {
 
     gettimeofday(&start, NULL);
     while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
-        if(rec == -2)
+        if(rec == -2) {
+            copy_info(&last, &current);
             return;
+        }
         fwrite(buffer, sizeof(char), rec, f);
         current.processed += rec;
 
@@ -218,7 +222,7 @@ void send_data(int* cfd, const char* file) {
     log_message(logger, LOG_INFO, "Start send data to client");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    int fileSize = -1, sent = 0, bytesRead;
+    long double fileSize = -1, sent = 0, bytesRead;
 
     char* serverFilePath = (char*)file;
     if(is_absolute_path(file) != 1) {
@@ -262,8 +266,10 @@ void send_data(int* cfd, const char* file) {
 
     gettimeofday(&start, NULL);
     while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
-        if (write_with_check(cfd, buffer, read, logger, f) == -2)
+        if (write_with_check(cfd, buffer, read, logger, f) == -2) {
+            copy_info(&last, &current);
             return;
+        }
         current.processed += read;
         
         gettimeofday(&end, NULL);

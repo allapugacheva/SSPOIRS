@@ -118,7 +118,7 @@ int upload(int* cfd, const char* command) {
     log_message(logger, LOG_INFO, "Start upload file to server");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    int fileSize = -1, sent = 0, bytesRead, ret;
+    long double fileSize = -1, sent = 0, bytesRead, ret;
 
     const char* filePath = command + 7;
     if(is_absolute_path(filePath) != 1)
@@ -188,7 +188,7 @@ int download(int* cfd, const char* command) {
     log_message(logger, LOG_INFO, "Start download data from server");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    int fileSize = -1, received = 0;
+    long double fileSize = -1, received = 0;
     const char* file = command + 9;
 
     if (write_with_check(cfd, command, strlen(command) + 1, logger, NULL) == -2)

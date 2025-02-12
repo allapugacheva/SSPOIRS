@@ -23,6 +23,7 @@ int check_connection(int* sockfd, FILE* logger) {
     int ret = send(*sockfd, NULL, 0, MSG_NOSIGNAL);
     if (ret == -1) {
         if (errno == ECONNRESET || errno == EPIPE) {
+            printf("Lost connection\n");
             log_message(logger, LOG_ERROR, "Lost connection");
             close(*sockfd);
             *sockfd = -1;
@@ -38,6 +39,7 @@ int write_with_check(int* sockfd, const char* buffer, int len, FILE* logger, FIL
     if (ret == -1 && (errno == ECONNRESET || errno == EPIPE)) {
         if(f != NULL)
             fclose(f);
+        printf("Lost connection\n");
         log_message(logger, LOG_ERROR, "Lost connection");
         close(*sockfd);
         *sockfd = -1;
@@ -52,6 +54,7 @@ int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f) 
     if (ret == 0 || (ret == -1 && errno == ECONNRESET)) {
         if (f != NULL)
             fclose(f);
+        printf("Lost connection\n");
         log_message(logger, LOG_ERROR, "Lost connection");
         close(*sockfd);
         *sockfd = -1;
@@ -60,12 +63,13 @@ int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f) 
     return ret;
 }
 
-int write_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f) {
+int write_with_check_int(int* sockfd, long double* buffer, FILE* logger, FILE* f) {
 
-    int ret = write(*sockfd, buffer, sizeof(int));
+    int ret = write(*sockfd, buffer, sizeof(long double));
     if (ret == -1 && (errno == ECONNRESET || errno == EPIPE)) {
         if (f != NULL)
             fclose(f);
+        printf("Lost connection\n");    
         log_message(logger, LOG_ERROR, "Lost connection");
         close(*sockfd);
         *sockfd = -1;
@@ -74,12 +78,13 @@ int write_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f) {
     return ret;
 }
 
-int read_with_check_int(int* sockfd, int* buffer, FILE* logger, FILE* f) {
+int read_with_check_int(int* sockfd, long double* buffer, FILE* logger, FILE* f) {
 
-    int ret = read(*sockfd, buffer, sizeof(int));
+    int ret = read(*sockfd, buffer, sizeof(long double));
     if (ret == 0 || (ret == -1 && errno == ECONNRESET)) {
         if (f != NULL)
             fclose(f);
+        printf("Lost connection\n");    
         log_message(logger, LOG_ERROR, "Lost connection");
         close(*sockfd);
         *sockfd = -1;

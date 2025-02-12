@@ -4,4 +4,9 @@ Lab1/Client/client
 Lab1/Server/server
 *.txt
 *.out
+<<<<<<< HEAD
 **Size200mb
+=======
+*/*/Size200mb
+*/*/10000mbf
+>>>>>>> 69e3763 (Make bugs)
