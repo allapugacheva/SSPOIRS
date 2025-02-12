@@ -1,65 +1,90 @@
 #include "server.h"
 
-char* lastFile = NULL;
+FILE *logger;
+SETTINGS* settings;
+LOAD_INFO current, last;
 
 void run() {
 
-    log_message(LOG_FILE, LOG_INFO, "Start server work");
+    logger = start_log(LOG_FILE);
+    log_message(logger, LOG_INFO, "Start server work");
+
+    settings = init_settings();
 
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
-    char command[10];
+    char command[BUFFER_SIZE];
 
     int sfd, cfd = -1;
-    start_server(&sfd);
+    if (!start_server(&sfd)) {
+        printf("\rError. Check log\n");
+        exit(errno);
+    }
     
+    vl_server_start();
+
     struct sockaddr_in clientAddr;
     socklen_t clientLen = sizeof(clientAddr);
 
     printf("> ");
     while (1) {
         
+        check_connection(&cfd, logger);
+
         if (cfd == -1) {
             cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen);
             if (cfd == -1 && !(errno == EWOULDBLOCK || errno == EAGAIN)) {
-                log_message(LOG_FILE, LOG_CRITICAL, "Accept client error");
+                log_message(logger, LOG_CRITICAL, "Accept client error");
                 close(sfd);
                 close(cfd);
                 exit(errno);
-            } else if (cfd != -1)
-                log_message(LOG_FILE, LOG_INFO, "Accept client connection"); // write also client addr??
+            } else if (cfd != -1) {
+                log_message(logger, LOG_INFO, "Accept client connection");
+                char clientIp[BUFFER_SIZE];
+                inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, BUFFER_SIZE);
+                init_load_info_client(&current, clientIp);
+                printf("\rAccept client connection: %s\n> ", clientIp);
+            }
         } else
-            process_client(cfd);
+            if (process_client(&cfd)) {
+                log_message(logger, LOG_INFO, "Client disconnected");
+                close(cfd);
+                cfd = -1;
+            }
 
         if (fgets(command, sizeof(command), stdin))  {
+            //printf("FUCK1\n");
             command[strlen(command) - 1] = '\0';
             if (strcmp(command, "ECHO") == 0)
                 echo();
-            else if (strcmp(command, "TIME") == 0)
+            else if (strcmp(command, "TIME") == 0) {
                 server_time();
+                //printf("FUCK2\n");
+            }
+            else if(strstr(command, "SETTINGS") != 0) 
+                settings_command(command); 
             else if (strcmp(command, "QUIT") == 0)
                 break;
-            else if(strcmp(command, "MHIF") == 0) {
-                mhif_command();
-            }
-             printf("> ");
+            //printf("FUCK3\n");
+            printf("> ");
         }
     }
 
-    log_message(LOG_FILE, LOG_INFO, "Stop server work");
+    log_message(logger, LOG_INFO, "Stop server work");
     fcntl(STDIN_FILENO, F_SETFL, flags);
+    fclose(logger);
     close(sfd);
 }
 
-void start_server(int* sfd) {
+int start_server(int* sfd) {
 
     *sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (*sfd == -1) {
-        log_message(LOG_FILE, LOG_CRITICAL, "Can't open socket");
+        log_message(logger, LOG_CRITICAL, "Can't open socket");
         close(*sfd);
-        exit(errno);
+        return 0;
     }
-    log_message(LOG_FILE, LOG_INFO, "Open socket");
+    log_message(logger, LOG_INFO, "Open socket");
 
     struct timeval timeout;
     timeout.tv_sec = 3;
@@ -67,11 +92,9 @@ void start_server(int* sfd) {
     setsockopt(*sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     int opt = 1;
-    if(setsockopt(*sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
-        log_message(LOG_FILE, LOG_CRITICAL, "Can't set socket options");
-        close (*sfd);
-        exit(errno);
-    }
+    setsockopt(*sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    setup_keepalive(sfd);
 
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
@@ -79,211 +102,234 @@ void start_server(int* sfd) {
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(*sfd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-        log_message(LOG_FILE, LOG_CRITICAL, "Can't bind socket");
+        log_message(logger, LOG_CRITICAL, "Can't bind socket");
         close(*sfd);
-        exit(errno);
+        return 0;
     }
-    log_message(LOG_FILE, LOG_INFO, "Bing server");
+    log_message(logger, LOG_INFO, "Bind server");
 
     if (listen(*sfd, 5) == -1) {
-        log_message(LOG_FILE, LOG_CRITICAL, "Can't start listen");
+        log_message(logger, LOG_CRITICAL, "Can't start listen");
         close(*sfd);
-        exit(errno);
+        return 0;
     }
-    log_message(LOG_FILE, LOG_INFO, "Server start to listen");
+    log_message(logger, LOG_INFO, "Server start to listen");
 
     fcntl(*sfd, F_SETFL, O_NONBLOCK);
+    return 1;
 }
 
-void process_client(int cfd) {
+int process_client(int* cfd) {
 
-    char buffer[80];
-    if (read(cfd, buffer, sizeof(buffer)) == -1)
-        return;
+    fd_set readfds;
+    struct timeval timeout;
+    timeout.tv_sec = 0; 
+    timeout.tv_usec = 0; 
+
+    FD_ZERO(&readfds);
+    FD_SET(*cfd, &readfds);
+
+    int ready = select(*cfd + 1, &readfds, NULL, NULL, &timeout);
+
+    if (!(ready > 0 && FD_ISSET(*cfd, &readfds)))
+        return 0;
+
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
+    if (read_with_check(cfd, &buffer, BUFFER_SIZE, logger, NULL) == -2) {
+        free(buffer);
+        return 0;
+    }
+
     if (strstr(buffer, "UPLOAD") != NULL) {
+        printf("\rClient start uploading file\n");
         char* file = buffer + 7;
         receive_data(cfd, file);
     } else if (strstr(buffer, "DOWNLOAD") != NULL) {
+        printf("\rClient start downloading file\n");
         char* file = buffer + 9;
         send_data(cfd, file);
+    } else if (strstr(buffer, "QUIT") != NULL) {
+        printf("\rClient disconnected\n> ");
+        free(buffer);
+        return 1;
     }
+    free(buffer);
+    return 0;
 }
 
-void receive_data(int cfd, const char* file) {
+void receive_data(int* cfd, const char* file) {
+    log_message(logger, LOG_INFO, "Start receive client data");
 
-    log_message(LOG_FILE, LOG_INFO, "Start receive client data");
-    // process lost connection
-    unsigned char buffer[80];
-    int fileSize = 0, received = 0;
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
+    int fileSize = -1, received = 0;
 
-    FILE* f = fopen(file, "wb");
+    init_load_info_file(&current, file, NULL, 1);
+    int same = same_clients_files(&current, &last);
+    char* fileName = get_filename(file);
+    char* serverFilePath = get_file_path(settings->file_path, fileName);
+    FILE* f = fopen(serverFilePath, same ? "ab" : "wb");
     if (f == NULL) {
-        log_message(LOG_FILE, LOG_ERROR, "Can't create file to receive data from client");
-        fclose(f);
-        write(cfd, &fileSize, sizeof(fileSize));
+        printf("\rCan't create file to receive data from client\n> ");
+        log_message(logger, LOG_ERROR, "Can't create file to receive data from client");
+        write_with_check_int(cfd, &fileSize, logger, NULL);
         return;
     }
 
-    read(cfd, &fileSize, sizeof(fileSize));
+    if (read_with_check_int(cfd, &current.fileSize, logger, f) == -2)
+        return;
+    if (same)
+        copy_file(&current, &last, f);
+    if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
+        return;
+    vl_input_message();
 
-    int rec;
-    while (received < fileSize && (rec = read(cfd, buffer, sizeof(buffer)))) {
-        fwrite(buffer, sizeof(unsigned char), rec, f);
-        received += rec;
+    int rec; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, current.fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
+    while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
+        if(rec == -2)
+            return;
+        fwrite(buffer, sizeof(char), rec, f);
+        current.processed += rec;
+
+        gettimeofday(&end, NULL);
+        new_percent = ((double)current.processed / current.fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
     }
-        // print percantage and amount of bytes
+    free_lline(lline);
 
-    log_message(LOG_FILE, LOG_INFO, "Client's data successfully received");
+    char* speedString = get_speed_stirng(get_speed(current.fileSize, 100.0, recTime));
+    printf("\rReceive file from client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", speedString, recTime);
+    log_message(logger, LOG_INFO, "Client's data successfully received");
     fclose(f);
+    free(serverFilePath);
+    free(fileName);
+    free(buffer);
+    free(speedString);
+    copy_info(&last, &current);
+    vl_task_success();
 }
 
-void send_data(int cfd, const char* file) {
+void send_data(int* cfd, const char* file) {
 
-    log_message(LOG_FILE, LOG_INFO, "Start send data to client");
-    // process lost connection
-    unsigned char buffer[80];
+    log_message(logger, LOG_INFO, "Start send data to client");
+
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     int fileSize = -1, sent = 0, bytesRead;
 
-    FILE* f = fopen(file, "rb");
+    char* serverFilePath = (char*)file;
+    if(is_absolute_path(file) != 1) {
+        serverFilePath = get_file_path(settings->file_path, file);
+    }
+
+    FILE* f = fopen(serverFilePath, "rb");
     if (f == NULL) {
-        log_message(LOG_FILE, LOG_ERROR, "Can't open file to send data to client");
-        fclose(f);
-        write(cfd, &fileSize, sizeof(fileSize));
+        printf("\rCan't open file to send data to client\n> ");
+        log_message(logger, LOG_ERROR, "Can't open file to send data to client");
+        write_with_check_int(cfd, &fileSize, logger, NULL);
+        free(buffer);
         return;
     }
 
-    if (read(cfd, &fileSize, sizeof(fileSize)) >= 0 && fileSize == -1) {
-        log_message(LOG_FILE, LOG_ERROR, "Can't open file on client");
+    int ret;
+    if ((ret = read_with_check_int(cfd, &current.fileSize, logger, f)) == -2)
+        return;
+    if (current.fileSize == -1 && ret != -1) {
+        printf("\rCan't open file on client\n> ");
+        log_message(logger, LOG_ERROR, "Can't open file on client");
         fclose(f);
+        free(buffer);
         return;
     }
 
-    fseek(f, 0, SEEK_END);
-    fileSize = ftell(f);
-    rewind(f);
-    write (cfd, &fileSize, sizeof(fileSize));
+    init_load_info_file(&current, file, f, 0);
+    if (same_clients_files(&current, &last))
+        copy_file(&current, &last, f);
 
-    int read;
-    while (sent < fileSize && (read = fread(buffer, 1, sizeof(buffer), f))) {
-        write(cfd, buffer, read);
-        sent += read;
-        // display persantage and amount of sent bytes
+    if (write_with_check_int(cfd, &current.fileSize, logger, f) == -2)
+        return;
+    if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
+        return;
+
+    int read; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, current.fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
+    while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
+        if (write_with_check(cfd, buffer, read, logger, f) == -2)
+            return;
+        current.processed += read;
+        
+        gettimeofday(&end, NULL);
+        new_percent = ((double)current.processed / current.fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
     }
+    free_lline(lline);
 
-    log_message(LOG_FILE, LOG_INFO, "Data successfully sent to client");
+    char* speedString = get_speed_stirng(get_speed(current.fileSize, 100.0, recTime));
+    printf("\rSent data to client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", speedString, recTime);
+    log_message(logger, LOG_INFO, "Data successfully sent to client");
     fclose(f);
+    free(buffer);
+    free(speedString);
+    copy_info(&last, &current);
 }
 
 void echo() {
-    if (lastFile != NULL)
-        printf("Last processed file: %s\n", lastFile);
+    if (last.fileName[0] != '\0')
+        printf("Last operation: %s. File: %s\n", !last.download ? "send to client" : "receive from client", last.fileName);
     else
         printf("No file processed before\n");
-    log_message(LOG_FILE, LOG_INFO, "Process command ECHO");
+    log_message(logger, LOG_INFO, "Process command ECHO");
 }
 
 void server_time() {
     time_t now = time(NULL);
     struct tm* timeInfo = localtime(&now);
 
-    printf("%02d.%02d.%4d %2d:%2d:%2d\n", 
+    printf("%02d.%02d.%4d %02d:%02d:%02d\n", 
         timeInfo->tm_mday, timeInfo->tm_mon + 1, timeInfo->tm_year + 1900,
         timeInfo->tm_hour, timeInfo->tm_min, timeInfo->tm_sec);
-    log_message(LOG_FILE, LOG_INFO, "Process command TIME");
+    log_message(logger, LOG_INFO, "Process command TIME");
 }
 
-//___________________ MINF ________________________________
-// need packages << libcurl4-openssl-dev libmpg123-dev >>
+//__________________ SETTINGS _________________________
 
-
-
-size_t write_data(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    return fwrite(ptr, size, nmemb, stream);
-}
-
-void mhif_command() {
-    CURL *curl;
-    FILE *fp;
-    CURLcode res;
-    const char *url = "https://drive.google.com/uc?export=download&id=17Toso8JcPQpizFuicb9AbBSGzvD2mqev"; 
-    const char *outfilename = "dechland.mp3";
-
-    // Инициализация curl
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-    curl = curl_easy_init();
-
-    if (curl) {
-        fp = fopen(outfilename, "wb");
-        if (!fp) {
-            fprintf(stderr, "Не удалось открыть файл для записи\n");
+void settings_command(char* command) {
+    if(strstr(command, ".path") != 0) {
+        char* start_i = strchr(command, ' ');
+        if(start_i == NULL) 
             return;
-        }
 
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        
-        res = curl_easy_perform(curl);
-        
-        fclose(fp);
-        
-        if (res != CURLE_OK) {
-            fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
-            curl_easy_cleanup(curl);
-            return;
+        int last_i = strlen(command) - 1;
+
+        while(*(++start_i) == ' ');
+ 
+        char dir[MAX_PATH_SIZE];
+        if(*start_i == '"' && command[last_i] == '"') {
+            start_i++; last_i--; 
+            strncpy(dir, start_i, strlen(start_i));
+            dir[strlen(start_i) - 1] = '\0';
+        } else { 
+            strcpy(dir, start_i);
         }
         
-        curl_easy_cleanup(curl);
+        settings_cmd(settings, SET_PATH, dir);
+
+    } else if(strcmp(command, "SETTINGS") == 0) { 
+        settings_cmd(settings, SETTINGS_LIST, NULL);
     }
-
-    play_mp3(outfilename);
-}
-
-void play_mp3(const char *filename) {
-    mpg123_handle *mh;
-    unsigned char buffer[BUFFER_SIZE];
-    size_t done;
-    int err;
-
-    // Инициализация mpg123
-    mpg123_init();
-    mh = mpg123_new(NULL, &err);
-    if (mh == NULL) {
-        fprintf(stderr, "Не удалось инициализировать mpg123: %s\n", mpg123_strerror(mh));
-        return;
-    }
-
-    // Открытие MP3 файла
-    if (mpg123_open(mh, filename) != MPG123_OK) {
-        fprintf(stderr, "Не удалось открыть MP3 файл: %s\n", mpg123_strerror(mh));
-        mpg123_delete(mh);
-        mpg123_exit();
-        return;
-    }
-
-    // Получение информации о частоте и каналах
-    long rate;
-    int channels, encoding;
-    mpg123_getformat(mh, &rate, &channels, &encoding);
-
-    // Инициализация ALSA
-    snd_pcm_t *pcm_handle;
-    snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
-    snd_pcm_set_params(pcm_handle, SND_PCM_FORMAT_S16_LE, SND_PCM_ACCESS_RW_INTERLEAVED, channels, rate, 1, 500000);
-
-    // Воспроизведение MP3
-    while ((err = mpg123_read(mh, buffer, BUFFER_SIZE, &done)) == MPG123_OK) {
-        snd_pcm_sframes_t frames = snd_pcm_writei(pcm_handle, buffer, done / (2 * channels)); // 2 байта на канал
-        if (frames < 0) {
-            frames = snd_pcm_recover(pcm_handle, frames, 0);
-        }
-    }
-
-    // Освобождение ресурсов
-    snd_pcm_drain(pcm_handle);
-    snd_pcm_close(pcm_handle);
-    mpg123_close(mh);
-    mpg123_delete(mh);
-    mpg123_exit();
 }

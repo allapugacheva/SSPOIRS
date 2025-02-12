@@ -1,138 +1,281 @@
 #include "client.h"
 
+FILE* logger;
+SETTINGS* settings;
+
 void run(const char* server) {
     
-    log_message(LOG_FILE, LOG_INFO, "Start client work");
+    logger = start_log(LOG_FILE);
+    log_message(logger, LOG_INFO, "Start client work");
 
-    char command[80];
+    int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
+
+    settings = init_settings();
     int cfd;
-    start_client(&cfd, server);
+    char command[BUFFER_SIZE];
 
-    while (1) {
+    int work = 1;
+    while(work) {
+
+        if (!start_client(&cfd, server)) {
+            printf("\rError. Check log\n");
+            exit(errno);
+        }
+        
         printf("> ");
-        fgets(command, sizeof(command), stdin);
-        command[strlen(command) - 1] = '\0';
-        if (strstr(command, "UPLOAD") != NULL) {
-            upload(cfd, command);
-        }
-        else if (strstr(command, "DOWNLOAD") != NULL) {
-            download(cfd, command);
-        }
-        else if (strcmp(command, "QUIT") == 0) // send to server
-            break;
-    }
+        while (1) {
 
-    log_message(LOG_FILE, LOG_INFO, "Stop client work");
+            if(!check_connection(&cfd, logger))
+                break;
+
+            if(fgets(command, sizeof(command), stdin)) {
+                command[strlen(command) - 1] = '\0';
+
+                if (strstr(command, "UPLOAD") != NULL) {
+                    if (upload(&cfd, command) == 0)
+                        break;
+                }
+                else if (strstr(command, "DOWNLOAD") != NULL) {
+                    if (download(&cfd, command) == 0)
+                        break;
+                }
+                else if(strstr(command, "SETTINGS") != NULL)
+                    settings_command(command); 
+                else if (strcmp(command, "QUIT") == 0) {
+                    write_with_check(&cfd, "QUIT", sizeof("QUIT"), logger, NULL);
+                    work = 0;
+                    break;
+                }
+                printf("> ");
+            }
+        }
+
+        if (work) {
+            printf("\rLose connection to server. Do you want to reconnect? [y/n]: ");
+            unsigned char ch;
+            while((ch = getchar()) != 'y' && ch != 'n');
+            fflush(stdin);
+            if(ch != 'y')
+                break;
+        }
+    }
+    log_message(logger, LOG_INFO, "Stop client work");
+    fcntl(STDIN_FILENO, F_SETFL, flags);
+    fclose(logger);
     close(cfd);
 }
 
-void start_client(int* cfd, const char* serverName) {
+int start_client(int* cfd, const char* serverName) {
+
+    *cfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (*cfd == -1) {
+        log_message(logger, LOG_CRITICAL, "Can't open socket");
+        close(*cfd);
+        return 0;
+    }
+    log_message(logger, LOG_INFO, "Open client socket");
+
+    struct timeval timeout;
+    timeout.tv_sec = 2;
+    timeout.tv_usec = 0;
+    setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    setup_keepalive(cfd);
 
     struct hostent* server;
     struct sockaddr_in addr;
     
     server = gethostbyname(serverName);
-    log_message(LOG_FILE, LOG_INFO, "Get host by name");
+    log_message(logger, LOG_INFO, "Get host by name");
 
     addr.sin_family = AF_INET;
     addr.sin_port = htons(8080);
     bcopy((char*)server->h_addr_list[0], (char*)&addr.sin_addr.s_addr, server->h_length);
 
-    *cfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (*cfd == -1) {
-        log_message(LOG_FILE, LOG_CRITICAL, "Can't open socket");
-        close(*cfd);
-        exit(errno);
-    }
-    log_message(LOG_FILE, LOG_INFO, "Open client socket");
-
-    struct timeval timeout;
-    timeout.tv_sec = 3;
-    timeout.tv_usec = 0;
-    setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
+    int tries = 0, maxTries = 10;
     while (connect(*cfd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
         if (errno == ENOENT) {
+            if (++tries >= maxTries) {
+                log_message(logger, LOG_CRITICAL, "Server is not available");
+                close(*cfd);
+                return 0;
+            }
             sleep(1);
             continue;
         } else {
-            log_message(LOG_FILE, LOG_CRITICAL, "Server connection error");
+            log_message(logger, LOG_CRITICAL, "Server connection error");
             close(*cfd);
-            exit(errno);
+            return 0;
         }
     }
-    log_message(LOG_FILE, LOG_INFO, "Connect to server");
+
+    log_message(logger, LOG_INFO, "Connect to server");
+    return 1;
 }
 
-void upload(int cfd, const char* command) {
+int upload(int* cfd, const char* command) {
 
-    log_message(LOG_FILE, LOG_INFO, "Start upload file to server");
-    unsigned char buffer[80];
-    int fileSize = -1, sent = 0, bytesRead;
-    const char* file = command + 7;
+    log_message(logger, LOG_INFO, "Start upload file to server");
 
-    FILE* f = fopen(file, "rb");
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
+    int fileSize = -1, sent = 0, bytesRead, ret;
+
+    const char* filePath = command + 7;
+    if(is_absolute_path(filePath) != 1)
+        filePath = get_file_path(settings->file_path, filePath);
+
+    FILE* f = fopen(filePath, "rb");
     if (f == NULL) {
-        log_message(LOG_FILE, LOG_CRITICAL, "Can't open file to send data to server");
-        fclose(f);
-        return;
+        printf("\rCan't open file to send data to server\n");
+        log_message(logger, LOG_ERROR, "Can't open file to send data to server");
+        return -1;
     }
-    
-    write(cfd, command, strlen(command) + 1);
-    if (read(cfd, &fileSize, sizeof(fileSize)) >= 0 && fileSize == -1) {
-        log_message(LOG_FILE, LOG_CRITICAL, "Error while create file on server");
+
+    if (write_with_check(cfd, command, strlen(command) + 1, logger, f) == -2)
+        return 0;
+    if ((ret = read_with_check_int(cfd, &fileSize, logger, f)) >= 0 && fileSize == -1) {
+        printf("\rCan't create file on server\n");
+        log_message(logger, LOG_ERROR, "Error while create file on server");
         fclose(f);
-        return;
+        return -1;
     }
+    if (ret == -2)
+        return 0;
 
     fseek(f, 0, SEEK_END);
     fileSize = ftell(f);
     rewind(f);
-    write(cfd, &fileSize, sizeof(fileSize));
+    if (write_with_check_int(cfd, &fileSize, logger, f) == -2)
+        return 0;
+    
+    if (read_with_check_int(cfd, &sent, logger, f) == -2)
+        return 0;
+    if (sent != 0)
+        fseek(f, sent, SEEK_SET);
 
-    int read;
-    while (sent < fileSize && (read = fread(buffer, 1, 80, f))) {
-        write(cfd, buffer, read);
+    int read; double new_percent = ((double)sent / fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
+    while (sent < fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
+        if (write_with_check(cfd, buffer, read, logger, f) == -2)
+            return 0;
         sent += read;
-        // display persantage and amount of sent bytes
+        
+        gettimeofday(&end, NULL);
+        new_percent = ((double)sent / fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
     }
+    free_lline(lline);
 
-    log_message(LOG_FILE, LOG_INFO, "Data successfully sent to server");
+    char* speedString = get_speed_stirng(get_speed(fileSize, 100.0, recTime));
+    printf("\rFile successfully sent to server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", speedString, recTime);
+    log_message(logger, LOG_INFO, "Data successfully sent to server");
     fclose(f);
+    free(buffer);
+    free(speedString);
+    return 1;
 }
 
-void download(int cfd, const char* command) {
+int download(int* cfd, const char* command) {
 
-    log_message(LOG_FILE, LOG_INFO, "Start download data from server");
-    // process lost connection
-    unsigned char buffer[80];
+    log_message(logger, LOG_INFO, "Start download data from server");
+
+    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
     int fileSize = -1, received = 0;
     const char* file = command + 9;
 
-    // send command to server && check that file exists
-    write(cfd, command, strlen(command) + 1);
-    if (read(cfd, &fileSize, sizeof(fileSize)) >= 0 && fileSize == -1) {
-        log_message(LOG_FILE, LOG_ERROR, "No such file on server");
-        return;
+    if (write_with_check(cfd, command, strlen(command) + 1, logger, NULL) == -2)
+        return 0;
+    int ret;
+    if ((ret = read_with_check_int(cfd, &fileSize, logger, NULL)) >= 0 && fileSize == -1) {
+        printf("\rNo such file on server\n");
+        log_message(logger, LOG_ERROR, "No such file on server");
+        return -1;
     }
+    if (ret == -2)
+        return 0;
 
-    FILE* f = fopen(file, "wb");
+    char* fileName = get_filename(file);
+    char* filePath = get_file_path(settings->file_path, fileName);
+    FILE* f = fopen(filePath, "wb");
     if (f == NULL) {
-        log_message(LOG_FILE, LOG_ERROR, "Can't create file to receive data from server");
-        fclose(f);
-        write(cfd, &fileSize, sizeof(fileSize));
-        return;
+        printf("\rCan't create file to receive data from server\n");
+        log_message(logger, LOG_ERROR, "Can't create file to receive data from server");
+        write_with_check_int(cfd, &fileSize, logger, NULL);
+        return -1;
     }
 
-    read(cfd, &fileSize, sizeof(fileSize));
+    if (read_with_check_int(cfd, &fileSize, logger, f) == -2)
+        return 0;
+    if (read_with_check_int(cfd, &received, logger, f) == -2)
+        return 0;
+    if (received != 0)
+        fseek(f, received, SEEK_SET);
 
-    int rec;
-    while (received < fileSize && (rec = read(cfd, buffer, sizeof(buffer)))) {
-        fwrite(buffer, sizeof(unsigned char), rec, f);
+    int rec; double new_percent = ((double)received / fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
+    while (received < fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
+        if (rec == -2)
+            return 0;
+        fwrite(buffer, sizeof(char), rec, f);
         received += rec;
-    }
-        // print percantage and amount of bytes
 
-    log_message(LOG_FILE, LOG_INFO, "Server's data successfully received");
+        gettimeofday(&end, NULL);
+        new_percent = ((double)received / fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
+    }
+
+    free_lline(lline);
+
+    char* speedString = get_speed_stirng(get_speed(fileSize, 100.0, recTime));
+    printf("\rSuccessfully receive data from server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", speedString, recTime);
+    log_message(logger, LOG_INFO, "Server's data successfully received");
     fclose(f);
+    free(fileName);
+    free(filePath);
+    free(buffer);
+    free(speedString);
+    return 1;
+}
+
+void settings_command(char* command) {
+    if(strstr(command, ".path") != 0) {
+        char* start_i = strchr(command, ' ');
+        if(start_i == NULL) 
+            return;
+
+        int last_i = strlen(command) - 1;
+
+        while(*(++start_i) == ' ');
+ 
+        char dir[MAX_PATH_SIZE];
+        if(*start_i == '"' && command[last_i] == '"') {
+            start_i++; last_i--; 
+            strncpy(dir, start_i, strlen(start_i));
+            dir[strlen(start_i) - 1] = '\0';
+        } else { 
+            strcpy(dir, start_i);
+        }
+        
+        settings_cmd(settings, SET_PATH, dir);
+
+    } else if(strcmp(command, "SETTINGS") == 0) { 
+        settings_cmd(settings, SETTINGS_LIST, NULL);
+    }
 }

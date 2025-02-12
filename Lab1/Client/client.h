@@ -1,3 +1,6 @@
+#ifndef CLIENT_H
+#define CLIENT_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,16 +11,17 @@
 #include <sys/time.h>
 #include <string.h>
 #include "../logger.h"
+#include "../check_connection.h"
+#include "../settings.h"
+
+#include "../bnl/loading_line.h"
 
 #define LOG_FILE "client_log.txt"
+#define BUFFER_SIZE 80
 
-// TCP
-// command: UPLOAD, DOWNLOAD, CONNECT, DISCONNECT
-// detect connection lost, request to reconnect
-// received data pecsantage
-// log file
-
-void run();
-void start_client(int* cfd, const char* serverName);
-void upload(int cfd, const char* file);
-void download(int cfd, const char* file);
+void run(const char* server);
+int start_client(int* cfd, const char* serverName);
+int upload(int* cfd, const char* file);
+int download(int* cfd, const char* file);
+void settings_command(char* command);
+#endif
