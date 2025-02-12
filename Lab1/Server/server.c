@@ -51,19 +51,15 @@ void run() {
             }
 
         if (fgets(command, sizeof(command), stdin))  {
-            //printf("FUCK1\n");
             command[strlen(command) - 1] = '\0';
             if (strcmp(command, "ECHO") == 0)
                 echo();
-            else if (strcmp(command, "TIME") == 0) {
+            else if (strcmp(command, "TIME") == 0)
                 server_time();
-                //printf("FUCK2\n");
-            }
             else if(strstr(command, "SETTINGS") != 0) 
                 settings_command(command); 
             else if (strcmp(command, "QUIT") == 0)
                 break;
-            //printf("FUCK3\n");
             printf("> ");
         }
     }
@@ -159,37 +155,38 @@ void receive_data(int* cfd, const char* file) {
     log_message(logger, LOG_INFO, "Start receive client data");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    long double fileSize = -1, received = 0;
 
     init_load_info_file(&current, file, NULL, 1);
     int same = same_clients_files(&current, &last);
-    char* fileName = get_filename(file);
-    char* serverFilePath = get_file_path(settings->file_path, fileName);
+
+    char* serverFilePath = get_file_path(settings->file_path, get_filename(file));
+
     FILE* f = fopen(serverFilePath, same ? "ab" : "wb");
     if (f == NULL) {
         printf("\rCan't create file to receive data from client\n> ");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from client");
-        write_with_check_int(cfd, &fileSize, logger, NULL);
+        long error = -1;
+        write_with_check_int(cfd, &error, logger, NULL);
         return;
     }
 
     if (read_with_check_int(cfd, &current.fileSize, logger, f) == -2)
         return;
 
-    if (same) {
+    if (same)
         copy_file(&current, &last, f);
-    }
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
 
-    int rec; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
-    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    int rec; 
+    double new_percent = ((double)current.processed / current.fileSize) * 100.0, recTime = 0.0, packTime = 0.0;
+    struct timeval start, end;
     LLINE* lline = init_lline(new_percent, current.fileSize);
     show_lline(lline);
 
     gettimeofday(&start, NULL);
     while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
-        if(rec == -2) {
+        if (rec == -2) {
             copy_info(&last, &current);
             return;
         }
@@ -199,22 +196,20 @@ void receive_data(int* cfd, const char* file) {
         gettimeofday(&end, NULL);
         new_percent = ((double)current.processed / current.fileSize) * 100.0;
         packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
-        if(refresh_lline(lline, new_percent, packTime) == 1) {
+        if (refresh_lline(lline, new_percent, packTime) == 1) {
             recTime += packTime;
             gettimeofday(&start, NULL);
         }
     }
     free_lline(lline);
 
-    char* speedString = get_speed_stirng(get_speed(current.fileSize, 100.0, recTime));
-    printf("\rReceive file from client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", speedString, recTime);
+    printf("\rReceive file from client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", 
+                                    get_speed_stirng(get_speed(current.fileSize, 100.0, recTime)), recTime);
     log_message(logger, LOG_INFO, "Client's data successfully received");
+    copy_info(&last, &current);
     fclose(f);
     free(serverFilePath);
-    free(fileName);
     free(buffer);
-    free(speedString);
-    copy_info(&last, &current);
 }
 
 void send_data(int* cfd, const char* file) {
@@ -222,26 +217,23 @@ void send_data(int* cfd, const char* file) {
     log_message(logger, LOG_INFO, "Start send data to client");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    long double fileSize = -1, sent = 0, bytesRead;
 
-    char* serverFilePath = (char*)file;
-    if(is_absolute_path(file) != 1) {
-        serverFilePath = get_file_path(settings->file_path, file);
-    }
+    const char* serverFilePath = is_absolute_path(file) != 1 ? get_file_path(settings->file_path, file) : file;
 
     FILE* f = fopen(serverFilePath, "rb");
     if (f == NULL) {
         printf("\rCan't open file to send data to client\n> ");
         log_message(logger, LOG_ERROR, "Can't open file to send data to client");
-        write_with_check_int(cfd, &fileSize, logger, NULL);
+        long error = -1;
+        write_with_check_int(cfd, &error, logger, NULL);
         free(buffer);
         return;
     }
 
-    int ret;
-    if ((ret = read_with_check_int(cfd, &current.fileSize, logger, f)) == -2)
+    int read;
+    if ((read = read_with_check_int(cfd, &current.fileSize, logger, f)) == -2)
         return;
-    if (current.fileSize == -1 && ret != -1) {
+    if (current.fileSize == -1 && read != -1) {
         printf("\rCan't open file on client\n> ");
         log_message(logger, LOG_ERROR, "Can't open file on client");
         fclose(f);
@@ -258,9 +250,8 @@ void send_data(int* cfd, const char* file) {
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
 
-    int read;
-    int rec; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
-    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    double new_percent = ((double)current.processed / current.fileSize) * 100.0, recTime = 0.0, packTime = 0.0;
+    struct timeval start, end;
     LLINE* lline = init_lline(new_percent, current.fileSize);
     show_lline(lline);
 
@@ -282,13 +273,12 @@ void send_data(int* cfd, const char* file) {
     }
     free_lline(lline);
 
-    char* speedString = get_speed_stirng(get_speed(current.fileSize, 100.0, recTime));
-    printf("\rSent data to client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", speedString, recTime);
+    printf("\rSent data to client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", 
+                            get_speed_stirng(get_speed(current.fileSize, 100.0, recTime)), recTime);
     log_message(logger, LOG_INFO, "Data successfully sent to client");
+    copy_info(&last, &current);
     fclose(f);
     free(buffer);
-    free(speedString);
-    copy_info(&last, &current);
 }
 
 void echo() {

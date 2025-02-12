@@ -118,7 +118,7 @@ int upload(int* cfd, const char* command) {
     log_message(logger, LOG_INFO, "Start upload file to server");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    long double fileSize = -1, sent = 0, bytesRead, ret;
+    long fileSize = -1, sent = 0, read;
 
     const char* filePath = command + 7;
     if(is_absolute_path(filePath) != 1)
@@ -133,13 +133,13 @@ int upload(int* cfd, const char* command) {
 
     if (write_with_check(cfd, command, strlen(command) + 1, logger, f) == -2)
         return 0;
-    if ((ret = read_with_check_int(cfd, &fileSize, logger, f)) >= 0 && fileSize == -1) {
+    if ((read = read_with_check_int(cfd, &fileSize, logger, f)) >= 0 && fileSize == -1) {
         printf("\rCan't create file on server\n");
         log_message(logger, LOG_ERROR, "Error while create file on server");
         fclose(f);
         return -1;
     }
-    if (ret == -2)
+    if (read == -2)
         return 0;
 
     fseek(f, 0, SEEK_END);
@@ -153,8 +153,8 @@ int upload(int* cfd, const char* command) {
     if (sent != 0)
         fseek(f, sent, SEEK_SET);
 
-    int read; double new_percent = ((double)sent / fileSize) * 100.0;
-    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    double new_percent = ((double)sent / fileSize) * 100.0, recTime = 0.0, packTime = 0.0;
+    struct timeval start, end;
     LLINE* lline = init_lline(new_percent, fileSize);
     show_lline(lline);
 
@@ -174,12 +174,11 @@ int upload(int* cfd, const char* command) {
     }
     free_lline(lline);
 
-    char* speedString = get_speed_stirng(get_speed(fileSize, 100.0, recTime));
-    printf("\rFile successfully sent to server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", speedString, recTime);
+    printf("\rFile successfully sent to server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", 
+                                                    get_speed_stirng(get_speed(fileSize, 100.0, recTime)), recTime);
     log_message(logger, LOG_INFO, "Data successfully sent to server");
     fclose(f);
     free(buffer);
-    free(speedString);
     return 1;
 }
 
@@ -188,22 +187,21 @@ int download(int* cfd, const char* command) {
     log_message(logger, LOG_INFO, "Start download data from server");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    long double fileSize = -1, received = 0;
-    const char* file = command + 9;
+    long fileSize = -1, received = 0;
+    int rec;
 
     if (write_with_check(cfd, command, strlen(command) + 1, logger, NULL) == -2)
         return 0;
-    int ret;
-    if ((ret = read_with_check_int(cfd, &fileSize, logger, NULL)) >= 0 && fileSize == -1) {
+    if ((rec = read_with_check_int(cfd, &fileSize, logger, NULL)) >= 0 && fileSize == -1) {
         printf("\rNo such file on server\n");
         log_message(logger, LOG_ERROR, "No such file on server");
         return -1;
     }
-    if (ret == -2)
+    if (rec == -2)
         return 0;
 
-    char* fileName = get_filename(file);
-    char* filePath = get_file_path(settings->file_path, fileName);
+    char* filePath = get_file_path(settings->file_path, get_filename(command + 9));
+
     FILE* f = fopen(filePath, "wb");
     if (f == NULL) {
         printf("\rCan't create file to receive data from server\n");
@@ -219,8 +217,8 @@ int download(int* cfd, const char* command) {
     if (received != 0)
         fseek(f, received, SEEK_SET);
 
-    int rec; double new_percent = ((double)received / fileSize) * 100.0;
-    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    double new_percent = ((double)received / fileSize) * 100.0, recTime = 0.0, packTime = 0.0;
+    struct timeval start, end;
     LLINE* lline = init_lline(new_percent, fileSize);
     show_lline(lline);
 
@@ -242,14 +240,12 @@ int download(int* cfd, const char* command) {
 
     free_lline(lline);
 
-    char* speedString = get_speed_stirng(get_speed(fileSize, 100.0, recTime));
-    printf("\rSuccessfully receive data from server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", speedString, recTime);
+    printf("\rSuccessfully receive data from server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", 
+                                                    get_speed_stirng(get_speed(fileSize, 100.0, recTime)), recTime);
     log_message(logger, LOG_INFO, "Server's data successfully received");
     fclose(f);
-    free(fileName);
     free(filePath);
     free(buffer);
-    free(speedString);
     return 1;
 }
 

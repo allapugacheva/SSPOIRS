@@ -20,9 +20,6 @@ void init_load_info_file(LOAD_INFO* cur, const char* file, FILE* f, int download
 }
 int same_clients_files(LOAD_INFO* cur, LOAD_INFO* last) {
 
-    printf("\n%s - %s\n", cur->client, last->client);
-    printf("%s - %s\n", cur->fileName, last->fileName);
-    printf("%d - %d\n", cur->download, last->download);
     return strcmp(cur->client, last->client) == 0 && strcmp(cur->fileName, last->fileName) == 0 && cur->download == last->download;
 }
 void copy_file(LOAD_INFO* dst, LOAD_INFO* src, FILE* f) {

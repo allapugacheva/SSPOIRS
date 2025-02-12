@@ -63,9 +63,9 @@ int read_with_check(int* sockfd, char** buffer, int len, FILE* logger, FILE* f) 
     return ret;
 }
 
-int write_with_check_int(int* sockfd, long double* buffer, FILE* logger, FILE* f) {
+int write_with_check_int(int* sockfd, long* buffer, FILE* logger, FILE* f) {
 
-    int ret = write(*sockfd, buffer, sizeof(long double));
+    int ret = write(*sockfd, buffer, sizeof(long));
     if (ret == -1 && (errno == ECONNRESET || errno == EPIPE)) {
         if (f != NULL)
             fclose(f);
@@ -78,9 +78,9 @@ int write_with_check_int(int* sockfd, long double* buffer, FILE* logger, FILE* f
     return ret;
 }
 
-int read_with_check_int(int* sockfd, long double* buffer, FILE* logger, FILE* f) {
+int read_with_check_int(int* sockfd, long* buffer, FILE* logger, FILE* f) {
 
-    int ret = read(*sockfd, buffer, sizeof(long double));
+    int ret = read(*sockfd, buffer, sizeof(long));
     if (ret == 0 || (ret == -1 && errno == ECONNRESET)) {
         if (f != NULL)
             fclose(f);
