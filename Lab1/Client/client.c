@@ -153,18 +153,33 @@ int upload(int* cfd, const char* command) {
     if (sent != 0)
         fseek(f, sent, SEEK_SET);
 
-    int read;
+    int read; double new_percent = ((double)sent / fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
     while (sent < fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
         if (write_with_check(cfd, buffer, read, logger, f) == -2)
             return 0;
         sent += read;
-        // display persantage and amount of sent bytes
+        
+        gettimeofday(&end, NULL);
+        new_percent = ((double)sent / fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
     }
+    free_lline(lline);
 
-    printf("\rFile successfully sent to server\n");
+    char* speedString = get_speed_stirng(get_speed(fileSize, 100.0, recTime));
+    printf("\rFile successfully sent to server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", speedString, recTime);
     log_message(logger, LOG_INFO, "Data successfully sent to server");
     fclose(f);
     free(buffer);
+    free(speedString);
     return 1;
 }
 
@@ -204,20 +219,37 @@ int download(int* cfd, const char* command) {
     if (received != 0)
         fseek(f, received, SEEK_SET);
 
-    int rec;
+    int rec; double new_percent = ((double)received / fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
     while (received < fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
         if (rec == -2)
             return 0;
         fwrite(buffer, sizeof(char), rec, f);
         received += rec;
+
+        gettimeofday(&end, NULL);
+        new_percent = ((double)received / fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
     }
 
-    printf("\rSuccessfully receive data from server\n");
+    free_lline(lline);
+
+    char* speedString = get_speed_stirng(get_speed(fileSize, 100.0, recTime));
+    printf("\rSuccessfully receive data from server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", speedString, recTime);
     log_message(logger, LOG_INFO, "Server's data successfully received");
     fclose(f);
     free(fileName);
     free(filePath);
     free(buffer);
+    free(speedString);
     return 1;
 }
 

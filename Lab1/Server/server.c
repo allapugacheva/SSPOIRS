@@ -139,11 +139,11 @@ int process_client(int* cfd) {
     }
 
     if (strstr(buffer, "UPLOAD") != NULL) {
-        printf("\rClient start uploading file\n> ");
+        printf("\rClient start uploading file\n");
         char* file = buffer + 7;
         receive_data(cfd, file);
     } else if (strstr(buffer, "DOWNLOAD") != NULL) {
-        printf("\rClient start downloading file\n> ");
+        printf("\rClient start downloading file\n");
         char* file = buffer + 9;
         send_data(cfd, file);
     } else if (strstr(buffer, "QUIT") != NULL) {
@@ -156,7 +156,6 @@ int process_client(int* cfd) {
 }
 
 void receive_data(int* cfd, const char* file) {
-
     log_message(logger, LOG_INFO, "Start receive client data");
 
     char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
@@ -176,27 +175,41 @@ void receive_data(int* cfd, const char* file) {
 
     if (read_with_check_int(cfd, &current.fileSize, logger, f) == -2)
         return;
-
     if (same)
         copy_file(&current, &last, f);
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
 
-    int rec;
+    int rec; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, current.fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
     while (current.processed < current.fileSize && (rec = read_with_check(cfd, &buffer, BUFFER_SIZE, logger, f))) {
         if(rec == -2)
             return;
         fwrite(buffer, sizeof(char), rec, f);
         current.processed += rec;
-    }
-        // print percantage and amount of bytes
 
-    printf("\rReceive file from client\n> ");
+        gettimeofday(&end, NULL);
+        new_percent = ((double)current.processed / current.fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
+    }
+    free_lline(lline);
+
+    char* speedString = get_speed_stirng(get_speed(current.fileSize, 100.0, recTime));
+    printf("\rReceive file from client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", speedString, recTime);
     log_message(logger, LOG_INFO, "Client's data successfully received");
     fclose(f);
     free(serverFilePath);
     free(fileName);
     free(buffer);
+    free(speedString);
     copy_info(&last, &current);
 }
 
@@ -240,19 +253,35 @@ void send_data(int* cfd, const char* file) {
         return;
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
         return;
-        
+
     int read;
+    int rec; double new_percent = ((double)current.processed / current.fileSize) * 100.0;
+    struct timeval start, end; double recTime = 0.0, packTime = 0.0;
+    LLINE* lline = init_lline(new_percent, current.fileSize);
+    show_lline(lline);
+
+    gettimeofday(&start, NULL);
     while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
         if (write_with_check(cfd, buffer, read, logger, f) == -2)
             return;
         current.processed += read;
-        // display persantage and amount of sent bytes
+        
+        gettimeofday(&end, NULL);
+        new_percent = ((double)current.processed / current.fileSize) * 100.0;
+        packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
+        if(refresh_lline(lline, new_percent, packTime) == 1) {
+            recTime += packTime;
+            gettimeofday(&start, NULL);
+        }
     }
+    free_lline(lline);
 
-    printf("\rSent data to client\n> ");
+    char* speedString = get_speed_stirng(get_speed(current.fileSize, 100.0, recTime));
+    printf("\rSent data to client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", speedString, recTime);
     log_message(logger, LOG_INFO, "Data successfully sent to client");
     fclose(f);
     free(buffer);
+    free(speedString);
     copy_info(&last, &current);
 }
 
