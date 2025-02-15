@@ -6,7 +6,8 @@ int main(int argc, char* argv[]) {
         perror("Server address not specified");
         exit(-1);
     }
+    int port = argc == 3 ? atoi(argv[2]) : 8080;
 
-    run(argv[1]);
+    run(argv[1], port);
     return 0;
 }

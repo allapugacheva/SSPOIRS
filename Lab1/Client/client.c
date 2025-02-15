@@ -3,7 +3,7 @@
 FILE* logger;
 SETTINGS* settings;
 
-void run(const char* server) {
+void run(const char* server, int port) {
     
     logger = start_log(LOG_FILE);
     log_message(logger, LOG_INFO, "Start client work");
@@ -15,14 +15,14 @@ void run(const char* server) {
     int cfd;
     char command[BUFFER_SIZE];
 
+    printf("> ");
     int work = 1;
     while(work) {
 
-        if (!start_client(&cfd, server)) {
+        if (!start_client(&cfd, server, port)) {
             printf("\rError. Check log\n");
             exit(errno);
         }
-        printf("> ");
         while (1) {
 
             if(!check_connection(&cfd, logger))
@@ -65,7 +65,7 @@ void run(const char* server) {
     close(cfd);
 }
 
-int start_client(int* cfd, const char* serverName) {
+int start_client(int* cfd, const char* serverName, int port) {
 
     *cfd = socket(AF_INET, SOCK_STREAM, 0);
     if (*cfd == -1) {
@@ -76,9 +76,12 @@ int start_client(int* cfd, const char* serverName) {
     log_message(logger, LOG_INFO, "Open client socket");
 
     struct timeval timeout;
-    timeout.tv_sec = 2;
-    timeout.tv_usec = 0;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 200;
     setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+    int snd_buf_size = 64000;
+    setsockopt(*cfd, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof(snd_buf_size));
 
     setup_keepalive(cfd);
 
@@ -89,7 +92,7 @@ int start_client(int* cfd, const char* serverName) {
     log_message(logger, LOG_INFO, "Get host by name");
 
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(8080);
+    addr.sin_port = htons(port);
     bcopy((char*)server->h_addr_list[0], (char*)&addr.sin_addr.s_addr, server->h_length);
 
     int tries = 0, maxTries = 10;
@@ -133,14 +136,6 @@ int upload(int* cfd, const char* command) {
 
     if (write_with_check(cfd, command, strlen(command) + 1, logger, f) == -2)
         return 0;
-    if ((read = read_with_check_int(cfd, &fileSize, logger, f)) >= 0 && fileSize == -1) {
-        printf("\rCan't create file on server\n");
-        log_message(logger, LOG_ERROR, "Error while create file on server");
-        fclose(f);
-        return -1;
-    }
-    if (read == -2)
-        return 0;
 
     fseek(f, 0, SEEK_END);
     fileSize = ftell(f);
@@ -176,6 +171,7 @@ int upload(int* cfd, const char* command) {
 
     printf("\rFile successfully sent to server. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n", 
                                                     get_speed_stirng(get_speed(fileSize, 100.0, recTime)), recTime);
+    printf("file size %ld\n", sent);
     log_message(logger, LOG_INFO, "Data successfully sent to server");
     fclose(f);
     free(buffer);
@@ -192,13 +188,6 @@ int download(int* cfd, const char* command) {
 
     if (write_with_check(cfd, command, strlen(command) + 1, logger, NULL) == -2)
         return 0;
-    if ((rec = read_with_check_int(cfd, &fileSize, logger, NULL)) >= 0 && fileSize == -1) {
-        printf("\rNo such file on server\n");
-        log_message(logger, LOG_ERROR, "No such file on server");
-        return -1;
-    }
-    if (rec == -2)
-        return 0;
 
     char* filePath = get_file_path(settings->file_path, get_filename(command + 9));
 
@@ -206,7 +195,6 @@ int download(int* cfd, const char* command) {
     if (f == NULL) {
         printf("\rCan't create file to receive data from server\n");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from server");
-        write_with_check_int(cfd, &fileSize, logger, NULL);
         return -1;
     }
 

@@ -17,10 +17,10 @@
 #include "../bnl/loading_line.h"
 
 #define LOG_FILE "client_log.txt"
-#define BUFFER_SIZE 80
+#define BUFFER_SIZE 64000
 
-void run(const char* server);
-int start_client(int* cfd, const char* serverName);
+void run(const char* server, int port);
+int start_client(int* cfd, const char* serverName, int port);
 int upload(int* cfd, const char* file);
 int download(int* cfd, const char* file);
 void settings_command(char* command);

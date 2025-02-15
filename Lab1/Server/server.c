@@ -4,7 +4,7 @@ FILE *logger;
 SETTINGS* settings;
 LOAD_INFO current, last;
 
-void run() {
+void run(int port) {
 
     logger = start_log(LOG_FILE);
     log_message(logger, LOG_INFO, "Start server work");
@@ -16,7 +16,7 @@ void run() {
     char command[BUFFER_SIZE];
 
     int sfd, cfd = -1;
-    if (!start_server(&sfd)) {
+    if (!start_server(&sfd, port)) {
         printf("\rError. Check log\n");
         exit(errno);
     }
@@ -70,7 +70,7 @@ void run() {
     close(sfd);
 }
 
-int start_server(int* sfd) {
+int start_server(int* sfd, int port) {
 
     *sfd = socket(AF_INET, SOCK_STREAM, 0);
     if (*sfd == -1) {
@@ -81,8 +81,8 @@ int start_server(int* sfd) {
     log_message(logger, LOG_INFO, "Open socket");
 
     struct timeval timeout;
-    timeout.tv_sec = 3;
-    timeout.tv_usec = 0;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 300;
     setsockopt(*sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     int opt = 1;
@@ -92,7 +92,7 @@ int start_server(int* sfd) {
 
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
-    addr.sin_port = htons(8080);
+    addr.sin_port = htons(port);
     addr.sin_addr.s_addr = INADDR_ANY;
 
     if (bind(*sfd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
@@ -165,14 +165,11 @@ void receive_data(int* cfd, const char* file) {
     if (f == NULL) {
         printf("\rCan't create file to receive data from client\n> ");
         log_message(logger, LOG_ERROR, "Can't create file to receive data from client");
-        long error = -1;
-        write_with_check_int(cfd, &error, logger, NULL);
         return;
     }
 
     if (read_with_check_int(cfd, &current.fileSize, logger, f) == -2)
         return;
-
     if (same)
         copy_file(&current, &last, f);
     if (write_with_check_int(cfd, &current.processed, logger, f) == -2)
@@ -192,7 +189,6 @@ void receive_data(int* cfd, const char* file) {
         }
         fwrite(buffer, sizeof(char), rec, f);
         current.processed += rec;
-
         gettimeofday(&end, NULL);
         new_percent = ((double)current.processed / current.fileSize) * 100.0;
         packTime = (end.tv_sec - start.tv_sec) + (end.tv_usec - start.tv_usec) * 1e-6;
@@ -224,23 +220,11 @@ void send_data(int* cfd, const char* file) {
     if (f == NULL) {
         printf("\rCan't open file to send data to client\n> ");
         log_message(logger, LOG_ERROR, "Can't open file to send data to client");
-        long error = -1;
-        write_with_check_int(cfd, &error, logger, NULL);
         free(buffer);
         return;
     }
 
     int read;
-    if ((read = read_with_check_int(cfd, &current.fileSize, logger, f)) == -2)
-        return;
-    if (current.fileSize == -1 && read != -1) {
-        printf("\rCan't open file on client\n> ");
-        log_message(logger, LOG_ERROR, "Can't open file on client");
-        fclose(f);
-        free(buffer);
-        return;
-    }
-
     init_load_info_file(&current, file, f, 0);
     if (same_clients_files(&current, &last))
         copy_file(&current, &last, f);
