@@ -10,23 +10,18 @@
 #include <fcntl.h>
 #include <sys/time.h>
 #include <string.h>
-#include "../logger.h"
-#include "../check_connection.h"
-#include "../load_info.h"
-#include "../settings.h"
-
+#include <time.h>
+#include "load_info.h"
+#include "../bnl/check_connection.h"
+#include "../bnl/settings.h"
 #include "../bnl/loading_line.h"
 
-#define LOG_FILE "server_log.txt"
-#define BUFFER_SIZE 80
-
-void run(int port);
-int start_server(int* sfd, int port);
-int process_client(int* cfd);
-void receive_data(int* cfd, const char* file);
-void send_data(int* cfd, const char* file);
-void echo();
-void server_time();
-void settings_command(char* command);
+void run           (int port);
+int  start_server  (int* sfd, int port);
+int  process_client(int* cfd);
+int  receive_data  (int* cfd, const char* file);
+int  send_data     (int* cfd, const char* file);
+void echo          ();
+void server_time   ();
 
 #endif

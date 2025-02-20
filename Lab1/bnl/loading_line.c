@@ -1,6 +1,7 @@
 #include "loading_line.h"
 
 LLINE* init_lline(double percent, double fileSize) {
+
     LLINE* lline = (LLINE*)malloc(sizeof(LLINE));
     lline->prcnt_char = '#';
     lline->prev_percent = percent;
@@ -14,8 +15,9 @@ LLINE* init_lline(double percent, double fileSize) {
 }
 
 void show_lline(LLINE* lline) {
+
     printf(LEFT_BOUND);
-    for(int i = 0; i < lline->crnt_amount_stages; i++) {
+    for (int i = 0; i < lline->crnt_amount_stages; i++) {
         printf("%c", lline->prcnt_char);
     }
 
@@ -32,24 +34,23 @@ int get_amount_stages_by_percent(LLINE* lline, double percent) {
 }
 
 int refresh_lline(LLINE* lline, double new_percent, double time) {
+
     double diff = new_percent - lline->prev_percent;
-    if(diff < lline->output_frequency) {
+    if (diff < lline->output_frequency)
         return 0;
-    }
 
     lline->crnt_amount_stages = get_amount_stages_by_percent(lline, new_percent);
     int temp = lline->crnt_amount_stages - lline->amount_inp_stages - 1;
     const char* crnt_color;
-    for(int i = 0; i < temp + 1; i++) {
+    for (int i = 0; i < temp + 1; i++) {
         lline->amount_inp_stages++;
         double crnt_percent = ((double)lline->amount_inp_stages / lline->amount_stages) * 100.0;
-        if(crnt_percent > 67.0) {
+        if (crnt_percent > 67.0)
+            crnt_color = CYAN;
+        else if (crnt_percent > 34.0)
+            crnt_color = MAGENTA;
+        else
             crnt_color = GREEN;
-        } else if (crnt_percent > 34.0) {
-            crnt_color = BOLD_YELLOW;
-        } else {
-            crnt_color = RED;
-        }
         usleep(lline->duration);
 
         printf("%s%c%s", crnt_color, lline->prcnt_char, RESET);
@@ -80,15 +81,16 @@ double get_speed(int fileSize, double percent_up, double time) {
 }
 
 char* get_speed_stirng(double bytes) {
+
     char buf[100];
     double speed = bytes / 1024;
-    if(bytes < 100) {
+    if (bytes < 100)
         sprintf(buf, "%.2lf/Bs", bytes);
-    } else if(speed < 100) {
+    else if (speed < 100)
         sprintf(buf, "%.2lf/KBs", speed);
-    } else if((speed /= 1024) < 100) {
+    else if ((speed /= 1024) < 100)
         sprintf(buf, "%.2lf/MBs", speed);
-    } else {
+    else {
         speed /= 1024;
         sprintf(buf, "%.2lf/GBs", speed);
     }
@@ -97,10 +99,10 @@ char* get_speed_stirng(double bytes) {
 }
 
 void free_lline(LLINE* lline) {
+    
     printf("\r");
-    for(int i = 0; i < lline->clear_size; i++) {
+    for (int i = 0; i < lline->clear_size; i++)
         printf(" ");
-    }
 
     free(lline);
 }

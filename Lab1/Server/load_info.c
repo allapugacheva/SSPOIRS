@@ -12,7 +12,7 @@ void init_load_info_file(LOAD_INFO* cur, const char* file, FILE* f, int download
     cur->download = download;
     strcpy(cur->fileName, file);
 
-    if(f != NULL) {
+    if (f != NULL) {
         fseek(f, 0, SEEK_END);
         cur->fileSize = ftell(f);
         rewind(f);
@@ -34,7 +34,7 @@ void copy_info(LOAD_INFO* dst, LOAD_INFO* src) {
     strcpy(dst->client, src->client);
     strcpy(dst->fileName, src->fileName);
     dst->fileSize = src->fileSize;
-    if(src->fileSize <= src->processed)
+    if (src->fileSize <= src->processed)
         dst->processed = 0;
     else
         dst->processed = src->processed;
