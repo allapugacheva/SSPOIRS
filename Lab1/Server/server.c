@@ -10,34 +10,38 @@ void run(int port) {
     int flags = fcntl(STDIN_FILENO, F_GETFL, 0);
     fcntl(STDIN_FILENO, F_SETFL, flags | O_NONBLOCK);
 
-    char command[BUFFER_SIZE];
+    wchar_t command[BUFFER_SIZE];
     int sfd, cfd = -1;
     if (!start_server(&sfd, port)) {
-        printf("Error while start server.\n");
+        wprintf(L"Ошибка при запуске сервера.\n");
         exit(errno);
     }
     
     struct sockaddr_in clientAddr;
     socklen_t clientLen = sizeof(clientAddr);
 
-    printf("> ");
+    wprintf(L"> ");
     while (1) {
         
         if (check_connection(&cfd) == 0)
-            printf("\rLost connection with client %s\n> ", current.client);
+            wprintf(L"\rПотеряно соединение с клиентом "CYAN"%ls"RESET"\n> ", current.client);
 
         if (cfd == -1) {
             cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen);
             if (cfd == -1 && !(errno == EWOULDBLOCK || errno == EAGAIN)) {
-                printf("\rAccept client error.\n");
+                wprintf(L"\rОшибка соединения с клиентом.\n");
                 close(sfd);
                 close(cfd);
                 exit(errno);
             } else if (cfd != -1) {
                 char clientIp[BUFFER_SIZE];
                 inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, BUFFER_SIZE);
-                init_load_info_client(&current, clientIp);
-                printf("\rAccept client connection: %s\n> ", clientIp);
+
+                wchar_t unicode_clientIp[BUFFER_SIZE];
+                mbstowcs(unicode_clientIp, clientIp, BUFFER_SIZE);
+
+                init_load_info_client(&current, unicode_clientIp);
+                wprintf(L"\rПринято соединение с клиентом: "CYAN"%ls"RESET"\n> ", unicode_clientIp);
             }
         } else
             if (process_client(&cfd)) {
@@ -45,18 +49,18 @@ void run(int port) {
                 cfd = -1;
             }
 
-        if (fgets(command, sizeof(command), stdin))  {
-            command[strlen(command) - 1] = '\0';
+        if (fgetws(command, sizeof(command), stdin) != NULL)  {
+            command[wcslen(command) - 1] = L'\0';
 
-            if (strstr(command, "ECHO") != NULL)
+            if (wcsstr(command, L"ECHO") != NULL)
                 echo();
-            else if (strstr(command, "TIME") != NULL)
+            else if (wcsstr(command, L"TIME") != NULL)
                 server_time();
-            else if (strstr(command, "SETTINGS") != NULL) 
+            else if (wcsstr(command, L"SETTINGS") != NULL) 
                 settings_command(settings, command); 
-            else if (strstr(command, "QUIT") != NULL)
+            else if (wcsstr(command, L"QUIT") != NULL)
                 break;
-            printf("> ");
+            wprintf(L"> ");
         }
     }
 
@@ -72,7 +76,7 @@ int start_server(int* sfd, int port) {
 
     struct timeval timeout;
     timeout.tv_sec = 0;
-    timeout.tv_usec = 300000;
+    timeout.tv_usec = 600000;
     setsockopt(*sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     setsockopt(*sfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
 
@@ -118,24 +122,24 @@ int process_client(int* cfd) {
     if (!(ready > 0 && FD_ISSET(*cfd, &readfds)))
         return 0;
 
-    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
-    if (read_with_check_str(cfd, &buffer, BUFFER_SIZE, NULL) == -2) {
+    wchar_t* buffer = (wchar_t*)malloc(BUFFER_SIZE * sizeof(wchar_t));
+    if (read_with_check_wstr(cfd, &buffer, BUFFER_SIZE, NULL) == -2) {
         free(buffer);
         return 0;
     }
 
-    if (strstr(buffer, "UPLOAD") != NULL) {
-        printf("\rClient start uploading file.\n");
-        char* file = buffer + 7;
+    if (wcsstr(buffer, L"UPLOAD") != NULL) {
+        wprintf(L"\rКлиент начал загрузку файла.\n");
+        wchar_t* file = buffer + 7;
         if (receive_data(cfd, file) == 0)
-            printf("\rError while receive file from client.\n");
-    } else if (strstr(buffer, "DOWNLOAD") != NULL) {
-        printf("\rClient start downloading file.\n");
-        char* file = buffer + 9;
+            wprintf(L"\rОшибка получения файла от клиента.\n");
+    } else if (wcsstr(buffer, L"DOWNLOAD") != NULL) {
+        wprintf(L"\rКлиент начал скачиваение файла.\n");
+        wchar_t* file = buffer + 9;
         if (send_data(cfd, file) == 0)
-            printf("\rError while send file to client.\n");
-    } else if (strstr(buffer, "QUIT") != NULL) {
-        printf("\rClient %s disconnected.\n> ", current.client);
+            wprintf(L"\rОшибка отправки файла клиенту.\n");
+    } else if (wcsstr(buffer, L"QUIT") != NULL) {
+        wprintf(L"\rКлиент "CYAN"%ls"RESET" отключился.\n> ", current.client);
         free(buffer);
         return 1;
     }
@@ -144,18 +148,24 @@ int process_client(int* cfd) {
     return 0;
 }
 
-int receive_data(int* cfd, const char* file) {
+int receive_data(int* cfd, const wchar_t* file) {
 
     init_load_info_file(&current, file, NULL, 1);
     int same = same_clients_files(&current, &last);
 
-    char* serverFilePath = get_file_path(settings->file_path, get_filename(file));
-    FILE* f = fopen(serverFilePath, same ? "ab" : "wb");
+    wchar_t* serverFilePath = get_file_path(settings->file_path, get_filename(file));
+
+    size_t len = wcslen(serverFilePath) * sizeof(wchar_t) + 1;
+    char* utf8_filename = (char*)malloc(len);
+    wcstombs(utf8_filename, serverFilePath, len);
+
+    FILE* f = fopen(utf8_filename, same ? "ab" : "wb");
     if (f == NULL)
         return 0;
 
     if (read_with_check_long(cfd, &current.fileSize, f) == -2)
         return 0;
+
     if (same)
         copy_file(&current, &last, f);
     if (write_with_check_long(cfd, &current.processed, f) == -2)
@@ -168,12 +178,9 @@ int receive_data(int* cfd, const char* file) {
     show_lline(lline);
 
     gettimeofday(&start, NULL);
-    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
+    char* buffer = (char*)malloc(BUFFER_SIZE);
     while (current.processed < current.fileSize && (rec = read_with_check_str(cfd, &buffer, BUFFER_SIZE, f))) {
-        if (rec == -2) {
-            copy_info(&last, &current);
-            return 0;
-        }
+
         fwrite(buffer, sizeof(char), rec, f);
         current.processed += rec;
 
@@ -185,8 +192,12 @@ int receive_data(int* cfd, const char* file) {
         }
     }
     free_lline(lline);
+    if (rec < 0) {
+        copy_info(&last, &current);
+        return 0;
+    }
 
-    printf("\rReceive file from client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", 
+    wprintf(L"\rПолучен файл от клиента. Скорость: "GREEN"%ls"RESET"; Время: "CYAN"%.2f с."RESET"\n> ", 
                     get_speed_stirng(get_speed(current.fileSize, 100.0, recTime)), recTime);
     copy_info(&last, &current);
     fclose(f);
@@ -195,10 +206,15 @@ int receive_data(int* cfd, const char* file) {
     return 1;
 }
 
-int send_data(int* cfd, const char* file) {
+int send_data(int* cfd, const wchar_t* file) {
 
-    const char* serverFilePath = is_absolute_path(file) != 1 ? get_file_path(settings->file_path, file) : file;
-    FILE* f = fopen(serverFilePath, "rb");
+    const wchar_t* serverFilePath = is_absolute_path(file) != 1 ? get_file_path(settings->file_path, file) : file;
+
+    size_t len = wcslen(serverFilePath) * sizeof(wchar_t) + 1;
+    char* utf8_filename = (char*)malloc(len);
+    wcstombs(utf8_filename, serverFilePath, len);
+
+    FILE* f = fopen(utf8_filename, "rb");
     if (f == NULL)
         return 0;
 
@@ -218,7 +234,7 @@ int send_data(int* cfd, const char* file) {
 
     gettimeofday(&start, NULL);
     int read;
-    char* buffer = (char*)malloc(BUFFER_SIZE * sizeof(char));
+    char* buffer = (char*)malloc(BUFFER_SIZE);
     while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
         if (write_with_check_str(cfd, buffer, read, f) == -2) {
             copy_info(&last, &current);
@@ -236,7 +252,7 @@ int send_data(int* cfd, const char* file) {
     }
     free_lline(lline);
 
-    printf("\rSuccessfully sent data to client. Speed: "GREEN"%s"RESET"; Time: "CYAN"%.2fs"RESET"\n> ", 
+    wprintf(L"\rФайл отправлен клиенту. Скорость: "GREEN"%ls"RESET"; Время: "CYAN"%.2f с."RESET"\n> ", 
             get_speed_stirng(get_speed(current.fileSize, 100.0, recTime)), recTime);
     copy_info(&last, &current);
     fclose(f);
@@ -246,10 +262,10 @@ int send_data(int* cfd, const char* file) {
 
 void echo() {
 
-    if (last.fileName[0] != '\0')
-        printf("Last operation: %s. File: %s\n", !last.download ? "send to client" : "receive from client", last.fileName);
+    if (last.fileName[0] != L'\0')
+        wprintf(L"Последняя команда: %ls. Файл: %ls\n", !last.download ? L"отправлен клиенту." : L"получен от клиента.", last.fileName);
     else
-        printf("No file processed before\n");
+        wprintf(L"Операций приёма/передачи не производилось.\n");
 }
 
 void server_time() {
@@ -257,7 +273,7 @@ void server_time() {
     time_t now = time(NULL);
     struct tm* timeInfo = localtime(&now);
 
-    printf("%02d.%02d.%4d %02d:%02d:%02d\n", 
+    wprintf(L"Текущее время: %02d.%02d.%4d %02d:%02d:%02d\n", 
         timeInfo->tm_mday, timeInfo->tm_mon + 1, timeInfo->tm_year + 1900,
         timeInfo->tm_hour, timeInfo->tm_min, timeInfo->tm_sec);
 }

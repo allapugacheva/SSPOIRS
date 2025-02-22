@@ -5,7 +5,7 @@
 #include <stdlib.h>    
 #include <unistd.h>   
 #include <errno.h>
-#include <string.h>
+#include <wchar.h>
 #include <sys/types.h> 
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -15,6 +15,8 @@ void setup_keepalive      (int* sockfd);
 int  check_connection     (int* sockfd);
 int  write_with_check_str (int* sockfd, const char* buffer, int len, FILE* f);
 int  read_with_check_str  (int* sockfd, char** buffer, int len, FILE* f);
+int  write_with_check_wstr (int* sockfd, const wchar_t* buffer, int len, FILE* f);
+int  read_with_check_wstr  (int* sockfd, wchar_t** buffer, int len, FILE* f);
 int  write_with_check_long(int* sockfd, long* buffer, FILE* f);
 int  read_with_check_long (int* sockfd, long* buffer, FILE* f);
 int  process_result       (int ret, int* sockfd, FILE* f);

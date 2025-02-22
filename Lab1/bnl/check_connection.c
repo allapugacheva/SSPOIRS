@@ -38,14 +38,24 @@ int read_with_check_str(int* sockfd, char** buffer, int len, FILE* f) {
     return process_result(read(*sockfd, *buffer, len), sockfd, f);
 }
 
+int write_with_check_wstr(int* sockfd, const wchar_t* buffer, int len, FILE* f) {
+
+    return process_result(write(*sockfd, buffer, len * sizeof(wchar_t)), sockfd, f);
+}
+
+int read_with_check_wstr(int* sockfd, wchar_t** buffer, int len, FILE* f) {
+
+    return process_result(read(*sockfd, *buffer, len * sizeof(wchar_t)), sockfd, f);
+}
+
 int write_with_check_long(int* sockfd, long* buffer, FILE* f) {
 
-    return process_result(write(*sockfd, buffer, sizeof(long)), sockfd, f);
+    return process_result(write(*sockfd, buffer, sizeof(*buffer)), sockfd, f);
 }
 
 int read_with_check_long(int* sockfd, long* buffer, FILE* f) {
 
-    return process_result(read(*sockfd, buffer, sizeof(long)), sockfd, f);
+    return process_result(read(*sockfd, buffer, sizeof(*buffer)), sockfd, f);
 }
 
 int process_result (int ret, int* sockfd, FILE* f) {
@@ -53,7 +63,7 @@ int process_result (int ret, int* sockfd, FILE* f) {
     if (ret == 0 || (ret == -1 && errno == ECONNRESET)) {
         if (f != NULL)
             fclose(f);
-        printf("\rLost connection.\n");    
+        wprintf(L"\rСоединение разорвано.                     \n");    
         close(*sockfd);
         *sockfd = -1;
         return -2;

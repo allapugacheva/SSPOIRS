@@ -11,6 +11,7 @@
 #include <sys/time.h>
 #include <string.h>
 #include <time.h>
+#include <locale.h>
 #include "load_info.h"
 #include "../bnl/check_connection.h"
 #include "../bnl/settings.h"
@@ -19,8 +20,8 @@
 void run           (int port);
 int  start_server  (int* sfd, int port);
 int  process_client(int* cfd);
-int  receive_data  (int* cfd, const char* file);
-int  send_data     (int* cfd, const char* file);
+int  receive_data  (int* cfd, const wchar_t* file);
+int  send_data     (int* cfd, const wchar_t* file);
 void echo          ();
 void server_time   ();
 

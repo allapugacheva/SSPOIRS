@@ -2,6 +2,7 @@
 
 int main(int argc, char* argv[]) {
 
+    setlocale(LC_ALL, "");
     if (argc < 2) {
         perror("Server address not specified.\n");
         exit(-1);
