@@ -20,7 +20,7 @@ void init_load_info_file(LOAD_INFO* cur, const wchar_t* file, FILE* f, int downl
 }
 int same_clients_files(LOAD_INFO* cur, LOAD_INFO* last) {
 
-    return wcscmp(cur->client, last->client) == 0 && wcscmp(cur->fileName, last->fileName) == 0 && cur->download == last->download;
+    return wcscmp(cur->client, last->client) == 0 && wcscmp(cur->fileName, last->fileName) == 0 && cur->download == last->download && cur->fileSize == last->fileSize;
 }
 void copy_file(LOAD_INFO* dst, LOAD_INFO* src, FILE* f) {
 
@@ -38,7 +38,6 @@ void copy_info(LOAD_INFO* dst, LOAD_INFO* src) {
         dst->processed = 0;
     else
         dst->processed = src->processed;
-    src->fileSize = -1;
     src->processed = 0;
     dst->download = src->download;
 }

@@ -3,22 +3,35 @@
 
 #include <stdio.h>     
 #include <stdlib.h>    
-#include <unistd.h>   
 #include <errno.h>
 #include <wchar.h>
+#include <unistd.h>   
 #include <sys/types.h> 
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <ws2def.h>
+#include <ws2tcpip.h>
+#include <mstcpip.h>
+#define SCKT SOCKET
+#define INVLD_SCKT INVALID_SOCKET
+#elif __linux__
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#define SCKT int
+#define INVLD_SCKT -1
+#endif
 
-void setup_keepalive      (int* sockfd);
-int  check_connection     (int* sockfd);
-int  write_with_check_str (int* sockfd, const char* buffer, int len, FILE* f);
-int  read_with_check_str  (int* sockfd, char** buffer, int len, FILE* f);
-int  write_with_check_wstr (int* sockfd, const wchar_t* buffer, int len, FILE* f);
-int  read_with_check_wstr  (int* sockfd, wchar_t** buffer, int len, FILE* f);
-int  write_with_check_long(int* sockfd, long* buffer, FILE* f);
-int  read_with_check_long (int* sockfd, long* buffer, FILE* f);
-int  process_result       (int ret, int* sockfd, FILE* f);
+void setup_keepalive      (SCKT* sockfd);
+int  check_connection     (SCKT* sockfd);
+int  write_with_check_str (SCKT* sockfd, const char* buffer, int len, FILE* f);
+int  read_with_check_str  (SCKT* sockfd, char** buffer, int len, FILE* f);
+int  write_with_check_wstr (SCKT* sockfd, const wchar_t* buffer, int len, FILE* f);
+int  read_with_check_wstr  (SCKT* sockfd, wchar_t** buffer, int len, FILE* f);
+int  write_with_check_long(SCKT* sockfd, long* buffer, FILE* f);
+int  read_with_check_long (SCKT* sockfd, long* buffer, FILE* f);
+int  process_result       (int ret, SCKT* sockfd, FILE* f);
 
 #endif

@@ -27,7 +27,12 @@ int set_path(SETTINGS* settings, const wchar_t* dir) {
         char utf8_folder[MAX_PATH_SIZE];
         wcstombs(utf8_folder, dir, sizeof(utf8_folder));
 
+        #ifdef _WIN32
+        fd = mkdir(utf8_folder);
+        #elif __linux__
         fd = mkdir(utf8_folder, 0755);
+        #endif
+        
         wprintf(L"%d %s", fd, utf8_folder);
         if (fd == -1)
             return 0;
@@ -46,7 +51,7 @@ int is_directory_exists(const wchar_t *path) {
     if (stat(utf8_path, &info) != 0)
         return 0; 
 
-    return (info.st_mode & __S_IFDIR) != 0; 
+    return S_ISDIR(info.st_mode); 
 }
 
 wchar_t *get_file_path(const wchar_t *folder, const wchar_t *filename) {

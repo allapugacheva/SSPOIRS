@@ -5,7 +5,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#elif __linux__
 #include <arpa/inet.h>
+#endif
 
 #define BUFFER_SIZE 2048
 
