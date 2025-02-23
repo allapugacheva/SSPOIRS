@@ -1,10 +1,12 @@
 Lab1/.vscode
-*.jpg
+**jpg
 Lab1/Client/client
 Lab1/Server/server
-*.txt
-*.out
+**txt
+**out
 **Size200mb
 **10000mbf
 **jpeg
 **pdf
+**png
+**exe
