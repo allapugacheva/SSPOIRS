@@ -41,7 +41,7 @@ void run(const char* server, int port) {
                 }
                 else if (wcsstr(command, L"DOWNLOAD") != NULL) {
                     if (download(&cfd, command) == 0)
-                        wprintf(L"\rОшибка выполнения команды UPLOAD.\n");
+                        wprintf(L"\rОшибка выполнения команды DOWNLOAD.\n");
                 }
                 else if (wcsstr(command, L"SETTINGS") != NULL)
                     settings_command(settings, command); 
@@ -63,12 +63,8 @@ void run(const char* server, int port) {
                 break;
 
             #ifdef _WIN32
-            u_long mode = 0;  // 0 — блокирующий режим
+            u_long mode = 0;
             ioctlsocket(cfd, FIONBIO, &mode);
-            #elif __linux__
-            int flags = fcntl(cfd, F_GETFL, 0);
-            flags &= ~O_NONBLOCK;  // Убираем неблокирующий режим
-            fcntl(cfd, F_SETFL, flags);
             #endif
         }
     }
@@ -86,6 +82,18 @@ int start_client(SCKT* cfd, const char* serverName, int port) {
         close(*cfd);
         return 0;
     }
+
+    #ifdef __linux__
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 200000;
+    setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(*cfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    #endif
+
+    int snd_buf_size = BUFFER_SIZE;
+    setsockopt(*cfd, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof(snd_buf_size));
+    setsockopt(*cfd, SOL_SOCKET, SO_RCVBUF, &snd_buf_size, sizeof(snd_buf_size));
 
     setup_keepalive(cfd);
 
@@ -118,8 +126,6 @@ int start_client(SCKT* cfd, const char* serverName, int port) {
     #ifdef _WIN32
     u_long mode = 1;
     ioctlsocket(*cfd, FIONBIO, &mode);
-    #elif __linux__
-    fcntl(*cfd, F_SETFL, O_NONBLOCK);
     #endif
 
     return 1;
@@ -142,18 +148,19 @@ int upload(SCKT* cfd, const wchar_t* command) {
     if (f == NULL)
         return 0;
 
-    if (write_with_check_wstr(cfd, command, wcslen(command) + 1, f) <= 0)
+    if (write_with_check_wstr(cfd, command, wcslen(command) + 1, f) < 0)
         return 0;
 
     fseek(f, 0, SEEK_END);
     fileSize = ftell(f);
     rewind(f);
 
-    if (write_with_check_long(cfd, &fileSize, f) <= 0)
+    if (write_with_check_long(cfd, &fileSize, f) < 0)
         return 0;
 
     if (read_with_check_long(cfd, &sent, f) < 0)
         return 0;
+
     if (sent != 0)
         fseek(f, sent, SEEK_SET);
 
@@ -165,7 +172,7 @@ int upload(SCKT* cfd, const wchar_t* command) {
     gettimeofday(&start, NULL);
     char* buffer = (char*)malloc(BUFFER_SIZE);
     while (sent < fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
-        if (write_with_check_str(cfd, buffer, read, f) <= 0)
+        if (write_with_check_str(cfd, buffer, read, f) < 0)
             return 0;
         sent += read;
         
@@ -187,7 +194,7 @@ int upload(SCKT* cfd, const wchar_t* command) {
 
 int download(SCKT* cfd, const wchar_t* command) {
 
-    if (write_with_check_wstr(cfd, command, wcslen(command) + 1, NULL) <= 0)
+    if (write_with_check_wstr(cfd, command, wcslen(command) + 1, NULL) < 0)
         return 0;
 
     long fileSize = -1, received = 0, len, rec;

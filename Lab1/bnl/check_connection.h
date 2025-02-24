@@ -5,6 +5,7 @@
 #include <stdlib.h>    
 #include <errno.h>
 #include <wchar.h>
+#include <string.h>
 #include <unistd.h>   
 #include <sys/types.h> 
 
@@ -17,6 +18,8 @@
 #define SCKT SOCKET
 #define INVLD_SCKT INVALID_SOCKET
 #elif __linux__
+#include <sys/time.h>
+#include <sys/select.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>

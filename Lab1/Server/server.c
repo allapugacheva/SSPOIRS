@@ -51,9 +51,10 @@ void run(int port) {
                 wprintf(L"\rПринято соединение с клиентом: "CYAN"%ls"RESET"\n> ", unicode_clientIp);
             }
         } else {      
-            if (check_connection(&cfd) == 0)
+            if (check_connection(&sfd) == 0)
                 wprintf(L"\rПотеряно соединение с клиентом "CYAN"%ls"RESET"\n> ", current.client);
             else {
+                //wprintf(L"fuck\n");
                 if (process_client(&cfd)) {
                     close(cfd);
                     cfd = INVLD_SCKT;
@@ -100,6 +101,18 @@ int start_server(SCKT* sfd, int port) {
     setsockopt(*sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     #endif
 
+    #ifdef __linux__
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 600000;
+    setsockopt(*sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    setsockopt(*sfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    #endif
+
+    int snd_buf_size = BUFFER_SIZE;
+    setsockopt(*sfd, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof(snd_buf_size));
+    setsockopt(*sfd, SOL_SOCKET, SO_RCVBUF, &snd_buf_size, sizeof(snd_buf_size));
+
     setup_keepalive(sfd);
 
     struct sockaddr_in addr;
@@ -136,10 +149,10 @@ int process_client(SCKT* cfd) {
     }
 
     if (wcsstr(buffer, L"UPLOAD") != NULL) {
-        wprintf(L"\rКлиент начал загрузку файла.\n");
+        wprintf(L"\nКлиент начал загрузку файла.\n");
         wchar_t* file = buffer + 7;
         if (receive_data(cfd, file) == 0)
-            wprintf(L"\rОшибка получения файла от клиента.\n> ");
+            wprintf(L"\nОшибка получения файла от клиента.\n> ");
     } else if (wcsstr(buffer, L"DOWNLOAD") != NULL) {
         wprintf(L"\rКлиент начал скачиваение файла.\n");
         wchar_t* file = buffer + 9;
@@ -173,9 +186,11 @@ int receive_data(SCKT* cfd, const wchar_t* file) {
     if (read_with_check_long(cfd, &current.fileSize, f) < 0)
         return 0;
 
+    wprintf(L"size: %ld\n", current.fileSize);
+
     if (same_clients_files(&current, &last))
         copy_file(&current, &last, f);
-    if (write_with_check_long(cfd, &current.processed, f) <= 0)
+    if (write_with_check_long(cfd, &current.processed, f) < 0)
         return 0;
 
     int rec; 
@@ -233,9 +248,9 @@ int send_data(SCKT* cfd, const wchar_t* file) {
     if (same_clients_files(&current, &last))
         copy_file(&current, &last, f);
 
-    if (write_with_check_long(cfd, &current.fileSize, f) <= 0)
+    if (write_with_check_long(cfd, &current.fileSize, f) < 0)
         return 0;
-    if (write_with_check_long(cfd, &current.processed, f) <= 0)
+    if (write_with_check_long(cfd, &current.processed, f) < 0)
         return 0;
 
     double new_percent = ((double)current.processed / current.fileSize) * 100.0, recTime = 0.0, packTime = 0.0;
@@ -247,7 +262,7 @@ int send_data(SCKT* cfd, const wchar_t* file) {
     int read;
     char* buffer = (char*)malloc(BUFFER_SIZE);
     while (current.processed < current.fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
-        if (write_with_check_str(cfd, buffer, read, f) <= 0) {
+        if (write_with_check_str(cfd, buffer, read, f) < 0) {
             copy_info(&last, &current);
             return 0;
         }
