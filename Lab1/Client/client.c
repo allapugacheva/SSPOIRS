@@ -91,9 +91,11 @@ int start_client(SCKT* cfd, const char* serverName, int port) {
     setsockopt(*cfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     #endif
 
+    #if __linux__
     int snd_buf_size = BUFFER_SIZE;
     setsockopt(*cfd, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof(snd_buf_size));
     setsockopt(*cfd, SOL_SOCKET, SO_RCVBUF, &snd_buf_size, sizeof(snd_buf_size));
+    #endif
 
     setup_keepalive(cfd);
 

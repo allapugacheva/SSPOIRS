@@ -49,11 +49,7 @@ int check_connection(SCKT* sockfd) {
 
 int write_with_check_str(SCKT* sockfd, const char* buffer, int len, FILE* f) {
 
-    #ifdef _WIN32
-    return process_result(write(*sockfd, buffer, len), sockfd, f);
-    #elif __linux__
     return process_result(send(*sockfd, buffer, len, 0), sockfd, f);
-    #endif
 }
 
 int read_with_check_str(SCKT* sockfd, char** buffer, int len, FILE* f) {
@@ -64,21 +60,20 @@ int read_with_check_str(SCKT* sockfd, char** buffer, int len, FILE* f) {
     FD_SET(*sockfd, &readfds);
 
     struct timeval timeout;
-    timeout.tv_sec = 5;
-    timeout.tv_usec = 0;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 600000;
 
     int ready = select(*sockfd + 1, &readfds, NULL, NULL, &timeout);
 
     if (ready == SOCKET_ERROR || ready == 0) 
         return -1;
 
-    if (FD_ISSET(*sockfd, &readfds)) {
-        int ret = read(*sockfd, *buffer, len);
-        return process_result(ret, sockfd, f);
-    }
+    if (FD_ISSET(*sockfd, &readfds))
+        return process_result(recv(*sockfd, *buffer, len, 0), sockfd, f);
+
     return 0;
     #elif __linux__ 
-    return process_result(recv(*sockfd, *buffer, len, 0), sockfd, f);
+    return process_result(read(*sockfd, *buffer, len), sockfd, f);
     #endif
 }
 
@@ -91,7 +86,7 @@ int write_with_check_wstr(SCKT* sockfd, const wchar_t* buffer, int len, FILE* f)
 
     return write_with_check_str(sockfd, utf8_buffer, utf8_len, f);
     #elif __linux__
-    return process_result(send(*sockfd, buffer, len * sizeof(wchar_t), 0), sockfd, f);
+    return process_result(write(*sockfd, buffer, len * sizeof(wchar_t)), sockfd, f);
     #endif
 }
 
@@ -118,11 +113,10 @@ int read_with_check_wstr(SCKT* sockfd, wchar_t** buffer, int len, FILE* f) {
 int write_with_check_long(SCKT* sockfd, long* buffer, FILE* f) {
 
     #ifdef _WIN32
-    char temp[sizeof(long) + 1];
-    sprintf(temp, "%ld", *buffer);
-    temp[sizeof(long)] = '\0';
+    char temp[sizeof(long)];
+    memcpy(temp, buffer, sizeof(long));
 
-    return write_with_check_str(sockfd, temp, sizeof(long) + 1, f);
+    return write_with_check_str(sockfd, temp, sizeof(long), f);
     #elif __linux__
     return process_result(write(*sockfd, buffer, sizeof(*buffer)), sockfd, f);
     #endif
@@ -137,7 +131,7 @@ int read_with_check_long(SCKT* sockfd, long* buffer, FILE* f) {
         free(temp);
         return res;
     }
-    *buffer = atol(temp);
+    memcpy(buffer, temp, sizeof(long));
 
     return res;
     #elif __linux__

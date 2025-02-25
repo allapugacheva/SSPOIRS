@@ -1,7 +1,7 @@
 #ifndef CHECK_CONNECTION_H
 #define CHECL_CONNECTION_H
 
-#include <stdio.h>     
+#include <stdio.h>      
 #include <stdlib.h>    
 #include <errno.h>
 #include <wchar.h>

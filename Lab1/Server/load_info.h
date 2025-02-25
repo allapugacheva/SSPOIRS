@@ -12,7 +12,7 @@
 #include <arpa/inet.h>
 #endif
 
-#define BUFFER_SIZE 2048
+#define BUFFER_SIZE 2048 
 
 typedef struct {
     wchar_t client[INET_ADDRSTRLEN];

@@ -108,9 +108,11 @@ int start_server(SCKT* sfd, int port) {
     setsockopt(*sfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     #endif
 
+    #if __linux__
     int snd_buf_size = BUFFER_SIZE;
     setsockopt(*sfd, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof(snd_buf_size));
     setsockopt(*sfd, SOL_SOCKET, SO_RCVBUF, &snd_buf_size, sizeof(snd_buf_size));
+    #endif
 
     setup_keepalive(sfd);
 
