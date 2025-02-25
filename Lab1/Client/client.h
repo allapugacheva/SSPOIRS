@@ -20,7 +20,6 @@
 #include <mstcpip.h>
 #include <windows.h>
 #include <conio.h>
-//#pragma comment(lib, "ws2_32.lib")
 #elif __linux__
 #include <sys/socket.h>
 #include <netdb.h>

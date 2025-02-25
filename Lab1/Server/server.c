@@ -54,7 +54,6 @@ void run(int port) {
             if (check_connection(&sfd) == 0)
                 wprintf(L"\rПотеряно соединение с клиентом "CYAN"%ls"RESET"\n> ", current.client);
             else {
-                //wprintf(L"fuck\n");
                 if (process_client(&cfd)) {
                     close(cfd);
                     cfd = INVLD_SCKT;
@@ -185,8 +184,6 @@ int receive_data(SCKT* cfd, const wchar_t* file) {
 
     if (read_with_check_long(cfd, &current.fileSize, f) < 0)
         return 0;
-
-    wprintf(L"size: %ld\n", current.fileSize);
 
     if (same_clients_files(&current, &last))
         copy_file(&current, &last, f);

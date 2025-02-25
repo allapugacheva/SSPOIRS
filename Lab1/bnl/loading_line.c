@@ -17,9 +17,8 @@ LLINE* init_lline(double percent, double fileSize) {
 void show_lline(LLINE* lline) {
 
     wprintf(LEFT_BOUND);
-    for (int i = 0; i < lline->crnt_amount_stages; i++) {
+    for (int i = 0; i < lline->crnt_amount_stages; i++)
         wprintf(L"%lc", lline->prcnt_char);
-    }
 
     int temp = lline->amount_stages - lline->crnt_amount_stages;
     MOVE_RIGHT(temp);

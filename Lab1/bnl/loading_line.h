@@ -16,15 +16,15 @@
 #define MOVE_RIGHT(x)  wprintf(L"\033[%dC", x)
 
 typedef struct _LOADING_LINE {
-    double prev_percent;
-    wchar_t   prcnt_char;
-    int    amount_stages;
-    int    crnt_amount_stages;
-    int    amount_inp_stages;
-    int    duration;
-    double output_frequency;
-    int    clear_size;
-    double fileSize;
+    double  prev_percent;
+    wchar_t prcnt_char;
+    int     amount_stages;
+    int     crnt_amount_stages;
+    int     amount_inp_stages;
+    int     duration;
+    double  output_frequency;
+    int     clear_size;
+    double  fileSize;
 } LLINE;
 
 LLINE*   init_lline                  (double percent, double fileSize);
