@@ -83,20 +83,6 @@ int start_client(SCKT* cfd, const char* serverName, int port) {
         return 0;
     }
 
-    #ifdef __linux__
-    struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 200000;
-    setsockopt(*cfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(*cfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    #endif
-
-    #if __linux__
-    int snd_buf_size = BUFFER_SIZE;
-    setsockopt(*cfd, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof(snd_buf_size));
-    setsockopt(*cfd, SOL_SOCKET, SO_RCVBUF, &snd_buf_size, sizeof(snd_buf_size));
-    #endif
-
     setup_keepalive(cfd);
 
     struct hostent* server;
@@ -128,6 +114,8 @@ int start_client(SCKT* cfd, const char* serverName, int port) {
     #ifdef _WIN32
     u_long mode = 1;
     ioctlsocket(*cfd, FIONBIO, &mode);
+    #elif __linux__
+    fcntl(*cfd, F_SETFL, O_NONBLOCK);
     #endif
 
     return 1;
@@ -160,8 +148,12 @@ int upload(SCKT* cfd, const wchar_t* command) {
     if (write_with_check_long(cfd, &fileSize, f) < 0)
         return 0;
 
-    if (read_with_check_long(cfd, &sent, f) < 0)
+    int ret;
+    while ((ret = read_with_check_long(cfd, &sent, f)) == 0);
+    if (ret < 0) {
+        wprintf(L"%d\n", ret);
         return 0;
+    }
 
     if (sent != 0)
         fseek(f, sent, SEEK_SET);
@@ -174,8 +166,9 @@ int upload(SCKT* cfd, const wchar_t* command) {
     gettimeofday(&start, NULL);
     char* buffer = (char*)malloc(BUFFER_SIZE);
     while (sent < fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
-        if (write_with_check_str(cfd, buffer, read, f) < 0)
+        if (write_with_check_str(cfd, buffer, read, f) < 0) {
             return 0;
+        }
         sent += read;
         
         gettimeofday(&end, NULL);
@@ -212,9 +205,12 @@ int download(SCKT* cfd, const wchar_t* command) {
         f = fopen(utf8_filename, "wb");
     free(utf8_filename);
 
-    if (read_with_check_long(cfd, &fileSize, f) < 0)
+    int rat;
+    while ((rat = read_with_check_long(cfd, &fileSize, f)) == 0);
+    if (rat < 0)
         return 0;
-    if (read_with_check_long(cfd, &received, f) < 0)
+    while ((rat = read_with_check_long(cfd, &received, f)) == 0);
+    if (rat < 0)
         return 0;
     if (received != 0)
         fseek(f, received, SEEK_SET);
@@ -229,10 +225,10 @@ int download(SCKT* cfd, const wchar_t* command) {
     while (received < fileSize) {
 
         rec = read_with_check_str(cfd, &buffer, BUFFER_SIZE, f);
-        if (rec < 0)
-            return 0;
-        else if (rec == 0)
+        if (rec == 0)
             continue;
+        else if (rec < 0)
+            return 0;
 
         fwrite(buffer, sizeof(char), rec, f);
         received += rec;

@@ -27,32 +27,49 @@ void run(int port) {
 
         if (cfd == INVLD_SCKT) {
 
-            if ((cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen)) == INVLD_SCKT) {
+            fd_set readfds;
+            FD_ZERO(&readfds);
+            FD_SET(sfd, &readfds);
+        
+            struct timeval timeout;
+            timeout.tv_sec = 0;
+            timeout.tv_usec = 100000;
+        
+            int ready = select(sfd + 1, &readfds, NULL, NULL, &timeout);
+        
+            if (ready == SO_ERROR) {
+                wprintf(L"SELECT ERROR\n");
+                return;
+            }
+        
+            if (ready != 0 && FD_ISSET(sfd, &readfds)) {
+                if ((cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen)) == INVLD_SCKT) {
 
-                #ifdef _WIN32
-                if (WSAGetLastError() != WSAEWOULDBLOCK)
-                #elif __linux__
-                if (errno != EWOULDBLOCK && errno != EAGAIN)
-                #endif
-                {
-                    wprintf(L"\rОшибка соединения с клиентом.\n");
-                    close(sfd);
-                    close(cfd);
-                    exit(errno);
+                    #ifdef _WIN32
+                    if (WSAGetLastError() != WSAEWOULDBLOCK)
+                    #elif __linux__
+                    if (errno != EWOULDBLOCK && errno != EAGAIN)
+                    #endif
+                    {
+                        wprintf(L"\rОшибка соединения с клиентом.\n");
+                        close(sfd);
+                        close(cfd);
+                        exit(errno);
+                    }
+                } else {
+                    char clientIp[BUFFER_SIZE];
+                    inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, BUFFER_SIZE);
+
+                    wchar_t unicode_clientIp[BUFFER_SIZE];
+                    mbstowcs(unicode_clientIp, clientIp, BUFFER_SIZE);
+
+                    init_load_info_client(&current, unicode_clientIp);
+                    wprintf(L"\rПринято соединение с клиентом: "CYAN"%ls"RESET"\n> ", unicode_clientIp);
                 }
-            } else {
-                char clientIp[BUFFER_SIZE];
-                inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, BUFFER_SIZE);
-
-                wchar_t unicode_clientIp[BUFFER_SIZE];
-                mbstowcs(unicode_clientIp, clientIp, BUFFER_SIZE);
-
-                init_load_info_client(&current, unicode_clientIp);
-                wprintf(L"\rПринято соединение с клиентом: "CYAN"%ls"RESET"\n> ", unicode_clientIp);
             }
         } else {      
-            if (check_connection(&sfd) == 0)
-                wprintf(L"\rПотеряно соединение с клиентом "CYAN"%ls"RESET"\n> ", current.client);
+            if (check_connection(&cfd) == 0)
+                wprintf(L"\rПотеряно соединение с клиентом: "CYAN"%ls"RESET"\n> ", current.client);
             else {
                 if (process_client(&cfd)) {
                     close(cfd);
@@ -100,20 +117,6 @@ int start_server(SCKT* sfd, int port) {
     setsockopt(*sfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
     #endif
 
-    #ifdef __linux__
-    struct timeval timeout;
-    timeout.tv_sec = 0;
-    timeout.tv_usec = 600000;
-    setsockopt(*sfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-    setsockopt(*sfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-    #endif
-
-    #if __linux__
-    int snd_buf_size = BUFFER_SIZE;
-    setsockopt(*sfd, SOL_SOCKET, SO_SNDBUF, &snd_buf_size, sizeof(snd_buf_size));
-    setsockopt(*sfd, SOL_SOCKET, SO_RCVBUF, &snd_buf_size, sizeof(snd_buf_size));
-    #endif
-
     setup_keepalive(sfd);
 
     struct sockaddr_in addr;
@@ -148,6 +151,8 @@ int process_client(SCKT* cfd) {
         free(buffer);
         return 0;
     }
+
+    wprintf(L"%ls\n", buffer);
 
     if (wcsstr(buffer, L"UPLOAD") != NULL) {
         wprintf(L"\nКлиент начал загрузку файла.\n");
@@ -184,7 +189,9 @@ int receive_data(SCKT* cfd, const wchar_t* file) {
         f = fopen(utf8_filename, "wb");
     free(utf8_filename);
 
-    if (read_with_check_long(cfd, &current.fileSize, f) < 0)
+    int rat;
+    while ((rat = read_with_check_long(cfd, &current.fileSize, f)) == 0);
+    if (rat < 0)
         return 0;
 
     if (same_clients_files(&current, &last))
@@ -203,11 +210,12 @@ int receive_data(SCKT* cfd, const wchar_t* file) {
     while (current.processed < current.fileSize) {
 
         rec = read_with_check_str(cfd, &buffer, BUFFER_SIZE, f);
-        if (rec < 0) {
+        if (rec == 0)
+            continue;
+        else if (rec < 0) {
             copy_info(&last, &current);
             return 0;
-        } else if (rec == 0)
-            continue;
+        }
 
         fwrite(buffer, sizeof(char), rec, f);
         current.processed += rec;
@@ -288,7 +296,7 @@ int send_data(SCKT* cfd, const wchar_t* file) {
 void echo() {
 
     if (last.fileName[0] != L'\0')
-        wprintf(L"Последняя команда: %ls. Файл: %ls\n", !last.download ? L"отправлен клиенту." : L"получен от клиента.", last.fileName);
+        wprintf(L"Последняя команда: %ls. Файл: %ls\n", !last.download ? L"отправлен клиенту" : L"получен от клиента", last.fileName);
     else
         wprintf(L"Операций приёма/передачи не производилось.\n");
 }
