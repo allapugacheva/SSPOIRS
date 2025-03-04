@@ -26,46 +26,28 @@ void run(int port) {
     while (1) {
 
         if (cfd == INVLD_SCKT) {
+            if ((cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen)) == INVLD_SCKT) {
 
-            fd_set readfds;
-            FD_ZERO(&readfds);
-            FD_SET(sfd, &readfds);
-        
-            struct timeval timeout;
-            timeout.tv_sec = 0;
-            timeout.tv_usec = 100000;
-        
-            int ready = select(sfd + 1, &readfds, NULL, NULL, &timeout);
-        
-            if (ready == SO_ERROR) {
-                wprintf(L"SELECT ERROR\n");
-                return;
-            }
-        
-            if (ready != 0 && FD_ISSET(sfd, &readfds)) {
-                if ((cfd = accept(sfd, (struct sockaddr*)&clientAddr, &clientLen)) == INVLD_SCKT) {
-
-                    #ifdef _WIN32
-                    if (WSAGetLastError() != WSAEWOULDBLOCK)
-                    #elif __linux__
-                    if (errno != EWOULDBLOCK && errno != EAGAIN)
-                    #endif
-                    {
-                        wprintf(L"\rОшибка соединения с клиентом.\n");
-                        close(sfd);
-                        close(cfd);
-                        exit(errno);
-                    }
-                } else {
-                    char clientIp[BUFFER_SIZE];
-                    inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, BUFFER_SIZE);
-
-                    wchar_t unicode_clientIp[BUFFER_SIZE];
-                    mbstowcs(unicode_clientIp, clientIp, BUFFER_SIZE);
-
-                    init_load_info_client(&current, unicode_clientIp);
-                    wprintf(L"\rПринято соединение с клиентом: "CYAN"%ls"RESET"\n> ", unicode_clientIp);
+                #ifdef _WIN32
+                if (WSAGetLastError() != WSAEWOULDBLOCK)
+                #elif __linux__
+                if (errno != EWOULDBLOCK && errno != EAGAIN)
+                #endif
+                {
+                    wprintf(L"\rОшибка соединения с клиентом.\n");
+                    close(sfd);
+                    close(cfd);
+                    exit(errno);
                 }
+            } else {
+                char clientIp[BUFFER_SIZE];
+                inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, BUFFER_SIZE);
+
+                wchar_t unicode_clientIp[BUFFER_SIZE];
+                mbstowcs(unicode_clientIp, clientIp, BUFFER_SIZE);
+
+                init_load_info_client(&current, unicode_clientIp);
+                wprintf(L"\rПринято соединение с клиентом: "CYAN"%ls"RESET"\n> ", unicode_clientIp);
             }
         } else {      
             if (check_connection(&cfd) == 0)
