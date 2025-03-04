@@ -150,10 +150,8 @@ int upload(SCKT* cfd, const wchar_t* command) {
 
     int ret;
     while ((ret = read_with_check_long(cfd, &sent, f)) == 0);
-    if (ret < 0) {
-        wprintf(L"%d\n", ret);
+    if (ret < 0)
         return 0;
-    }
 
     if (sent != 0)
         fseek(f, sent, SEEK_SET);
@@ -166,9 +164,9 @@ int upload(SCKT* cfd, const wchar_t* command) {
     gettimeofday(&start, NULL);
     char* buffer = (char*)malloc(BUFFER_SIZE);
     while (sent < fileSize && (read = fread(buffer, 1, BUFFER_SIZE, f))) {
-        if (write_with_check_str(cfd, buffer, read, f) < 0) {
+
+        if ((ret = write_with_check_str(cfd, buffer, read, f)) < 0)
             return 0;
-        }
         sent += read;
         
         gettimeofday(&end, NULL);

@@ -152,13 +152,11 @@ int process_client(SCKT* cfd) {
         return 0;
     }
 
-    wprintf(L"%ls\n", buffer);
-
     if (wcsstr(buffer, L"UPLOAD") != NULL) {
-        wprintf(L"\nКлиент начал загрузку файла.\n");
+        wprintf(L"\rКлиент начал загрузку файла.\n");
         wchar_t* file = buffer + 7;
         if (receive_data(cfd, file) == 0)
-            wprintf(L"\nОшибка получения файла от клиента.\n> ");
+            wprintf(L"\rОшибка получения файла от клиента.\n> ");
     } else if (wcsstr(buffer, L"DOWNLOAD") != NULL) {
         wprintf(L"\rКлиент начал скачиваение файла.\n");
         wchar_t* file = buffer + 9;

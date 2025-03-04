@@ -8,7 +8,7 @@ void setup_keepalive(SCKT* sockfd) {
     setsockopt(*sockfd, SOL_SOCKET, SO_KEEPALIVE, (char*)&optval, sizeof(optval));
 
     struct tcp_keepalive ka;
-    ka.onoff = 1;           
+    ka.onoff = 1;            
     ka.keepalivetime = 10000;    
     ka.keepaliveinterval = 2000; 
 
@@ -50,32 +50,56 @@ int check_connection(SCKT* sockfd) {
 
 int write_with_check_str(SCKT* sockfd, const char* buffer, int len, FILE* f) {
 
-    return process_result(write(*sockfd, buffer, len), sockfd, f);
+    #ifdef _WIN32
+    return process_result(send(*sockfd, buffer, len, 0), sockfd, f);
+    #elif __linux__
+    return process_result(send(*sockfd, buffer, len, MSG_DONTWAIT), sockfd, f);
+    #endif
 }
 
 int read_with_check_str(SCKT* sockfd, char** buffer, int len, FILE* f) {
     
+    #ifdef _WIN32
+    return process_result(recv(*sockfd, *buffer, len, 0), sockfd, f);
+    #elif __linux
     return process_result(recv(*sockfd, *buffer, len, MSG_DONTWAIT), sockfd, f);
+    #endif
 }
 
 int write_with_check_wstr(SCKT* sockfd, const wchar_t* buffer, int len, FILE* f) {
 
+    #ifdef _WIN32
+    return process_result(send(*sockfd, (char*)buffer, len * sizeof(wchar_t), 0), sockfd, f);
+    #elif __linux__
     return process_result(send(*sockfd, buffer, len * sizeof(wchar_t), MSG_DONTWAIT), sockfd, f);
+    #endif
 }
 
 int read_with_check_wstr(SCKT* sockfd, wchar_t** buffer, int len, FILE* f) {
 
+    #ifdef _WIN32
+    return process_result(recv(*sockfd, (char*)*buffer, len * sizeof(wchar_t), 0), sockfd, f);
+    #elif __linux__
     return process_result(recv(*sockfd, *buffer, len * sizeof(wchar_t), MSG_DONTWAIT), sockfd, f);
+    #endif
 }
 
 int write_with_check_long(SCKT* sockfd, long* buffer, FILE* f) {
 
+    #ifdef _WIN32
+    return process_result(send(*sockfd, (char*)buffer, sizeof(*buffer), 0), sockfd, f);
+    #elif
     return process_result(send(*sockfd, buffer, sizeof(*buffer), MSG_DONTWAIT), sockfd, f);
+    #endif
 }
 
 int read_with_check_long(SCKT* sockfd, long* buffer, FILE* f) {
 
+    #ifdef _WIN32
+    return process_result(recv(*sockfd, (char*)buffer, sizeof(*buffer), 0), sockfd, f);
+    #elif
     return process_result(recv(*sockfd, buffer, sizeof(*buffer), MSG_DONTWAIT), sockfd, f);
+    #endif
 }
 
 int process_result(int ret, SCKT* sockfd, FILE* f) {
@@ -88,13 +112,13 @@ int process_result(int ret, SCKT* sockfd, FILE* f) {
     {
         if (f != NULL)
             fclose(f);
-        wprintf(L"\rСоединение разорвано.\n> ");    
+        wprintf(L"\rСоединение разорвано.             \n> ");    
         close(*sockfd);
         *sockfd = INVLD_SCKT;
         return ret;
     }
     #ifdef _WIN32
-    if (ret == -1 && (WSAGetLastError() == WSAEAGAIN || WSAGetLastError() == WSAEWOULDBLOCK))
+    if (ret == -1 && WSAGetLastError() == WSAEWOULDBLOCK)
     #elif __linux__
     if (ret == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
     #endif
